@@ -1,0 +1,24 @@
+#!/bin/bash
+cd ..
+mkdir -p src
+cd src
+
+# Download patch and build QEMU
+git clone https://github.com/qemu/qemu.git
+cd qemu
+git checkout tags/v5.0.0
+git apply ../../qemu/qemu_v5.0.0.patch
+
+mkdir build
+cd build
+../configure --enable-gtk --target-list=arm-softmmu,aarch64-softmmu,ppc-softmmu,ppc64-softmmu,riscv32-softmmu,riscv64-softmmu,mips-softmmu,mipsel-softmmu,mips64-softmmu,mips64el-softmmu,i386-softmmu,x86_64-softmmu
+make CFLAGS="-Warray-bounds=0" -j 8
+cd ../../../
+
+# Create the virtualenv and install dependencies
+if [ ! -d "mmushell_venv" ] ; then
+	python3 -m venv mmushell_venv
+fi
+
+source ./mmushell_venv/bin/activate
+pip3 install -r qemu/requirements.txt

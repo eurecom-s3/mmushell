@@ -1,0 +1,892 @@
+diff --git a/.gitignore b/.gitignore
+index 0c5af83aa7..7d90a9808e 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,3 +1,4 @@
++build/
+ /.doctrees
+ /config-devices.*
+ /config-all-devices.*
+diff --git a/hw/ppc/pnv.c b/hw/ppc/pnv.c
+index c9cb6fa357..8271bc046d 100644
+--- a/hw/ppc/pnv.c
++++ b/hw/ppc/pnv.c
+@@ -1749,6 +1749,10 @@ static void pnv_chip_core_realize(PnvChip *chip, Error **errp)
+                                 "pir", &error_fatal);
+         object_property_set_int(OBJECT(pnv_core), pnv->fw_load_addr,
+                                 "hrmor", &error_fatal);
++
++	qemu_log_mask(CPU_LOG_MMUSHELL, "HRMOR=%016" PRIx64 "\n", pnv->fw_load_addr);
++
++
+         object_property_set_link(OBJECT(pnv_core), OBJECT(chip), "chip",
+                                  &error_abort);
+         object_property_set_bool(OBJECT(pnv_core), true, "realized",
+diff --git a/hw/ppc/pnv_core.c b/hw/ppc/pnv_core.c
+index 234562040d..3b88b68c4c 100644
+--- a/hw/ppc/pnv_core.c
++++ b/hw/ppc/pnv_core.c
+@@ -57,6 +57,7 @@ static void pnv_core_cpu_reset(PnvCore *pc, PowerPCCPU *cpu)
+     env->msr |= MSR_HVB; /* Hypervisor mode */
+ 
+     env->spr[SPR_HRMOR] = pc->hrmor;
++    qemu_log_mask(CPU_LOG_MMUSHELL, "HRMOR=%016" PRIx64 "\n", env->spr[SPR_HRMOR]);
+ 
+     pcc->intc_reset(pc->chip, cpu);
+ }
+diff --git a/include/qemu/log.h b/include/qemu/log.h
+index f4724f7330..f1ef63d7ed 100644
+--- a/include/qemu/log.h
++++ b/include/qemu/log.h
+@@ -64,6 +64,7 @@ static inline bool qemu_log_separate(void)
+ #define CPU_LOG_PLUGIN     (1 << 18)
+ /* LOG_STRACE is used for user-mode strace logging. */
+ #define LOG_STRACE         (1 << 19)
++#define CPU_LOG_MMUSHELL     (1 << 30)
+ 
+ /* Lock output for a series of related logs.  Since this is not needed
+  * for a single qemu_log / qemu_log_mask / qemu_log_mask_and_addr, we
+diff --git a/target/arm/helper.c b/target/arm/helper.c
+index 7e9ea5d20f..35aa42e082 100644
+--- a/target/arm/helper.c
++++ b/target/arm/helper.c
+@@ -164,6 +164,27 @@ static void raw_write(CPUARMState *env, const ARMCPRegInfo *ri,
+     }
+ }
+ 
++static void raw_write_tcr_el(CPUARMState *env, const ARMCPRegInfo *ri,
++                      uint64_t value)
++{
++    raw_write(env, ri, value);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, value);
++}
++
++static void raw_write_contextidr_el(CPUARMState *env, const ARMCPRegInfo *ri,
++                      uint64_t value)
++{
++    raw_write(env, ri, value);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, value);
++}
++
++static void raw_write_sctlr(CPUARMState *env, const ARMCPRegInfo *ri,
++                      uint64_t value)
++{
++    raw_write(env, ri, value);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, value);
++}
++
+ static void *raw_ptr(CPUARMState *env, const ARMCPRegInfo *ri)
+ {
+     return (char *)env + ri->fieldoffset;
+@@ -706,6 +727,8 @@ static void contextidr_write(CPUARMState *env, const ARMCPRegInfo *ri,
+         tlb_flush(CPU(cpu));
+     }
+     raw_write(env, ri, value);
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, value);
+ }
+ 
+ /* IS variants of TLB operations must affect all cores */
+@@ -929,7 +952,7 @@ static const ARMCPRegInfo cp_reginfo[] = {
+       .access = PL1_RW, .accessfn = access_tvm_trvm,
+       .secure = ARM_CP_SECSTATE_NS,
+       .fieldoffset = offsetof(CPUARMState, cp15.contextidr_el[1]),
+-      .resetvalue = 0, .writefn = contextidr_write, .raw_writefn = raw_write, },
++      .resetvalue = 0, .writefn = contextidr_write, .raw_writefn = raw_write_contextidr_el, },
+     { .name = "CONTEXTIDR_S", .state = ARM_CP_STATE_AA32,
+       .cp = 15, .opc1 = 0, .crn = 13, .crm = 0, .opc2 = 1,
+       .access = PL1_RW, .accessfn = access_tvm_trvm,
+@@ -2056,6 +2079,8 @@ static void vbar_write(CPUARMState *env, const ARMCPRegInfo *ri,
+      * requires the bottom five bits to be RAZ/WI because they're UNK/SBZP.)
+      */
+     raw_write(env, ri, value & ~0x1FULL);
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, value);
+ }
+ 
+ static void scr_write(CPUARMState *env, const ARMCPRegInfo *ri, uint64_t value)
+@@ -3951,6 +3976,8 @@ static void vmsa_ttbcr_raw_write(CPUARMState *env, const ARMCPRegInfo *ri,
+     tcr->raw_tcr = value;
+     tcr->mask = ~(((uint32_t)0xffffffffu) >> maskshift);
+     tcr->base_mask = ~((uint32_t)0x3fffu >> maskshift);
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, value);
+ }
+ 
+ static void vmsa_ttbcr_write(CPUARMState *env, const ARMCPRegInfo *ri,
+@@ -3968,6 +3995,8 @@ static void vmsa_ttbcr_write(CPUARMState *env, const ARMCPRegInfo *ri,
+     /* Preserve the high half of TCR_EL1, set via TTBCR2.  */
+     value = deposit64(tcr->raw_tcr, 0, 32, value);
+     vmsa_ttbcr_raw_write(env, ri, value);
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, value);
+ }
+ 
+ static void vmsa_ttbcr_reset(CPUARMState *env, const ARMCPRegInfo *ri)
+@@ -3980,6 +4009,8 @@ static void vmsa_ttbcr_reset(CPUARMState *env, const ARMCPRegInfo *ri)
+     tcr->raw_tcr = 0;
+     tcr->mask = 0;
+     tcr->base_mask = 0xffffc000u;
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, tcr->raw_tcr);
+ }
+ 
+ static void vmsa_tcr_el12_write(CPUARMState *env, const ARMCPRegInfo *ri,
+@@ -3991,6 +4022,8 @@ static void vmsa_tcr_el12_write(CPUARMState *env, const ARMCPRegInfo *ri,
+     /* For AArch64 the A1 bit could result in a change of ASID, so TLB flush. */
+     tlb_flush(CPU(cpu));
+     tcr->raw_tcr = value;
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, value);
+ }
+ 
+ static void vmsa_ttbr_write(CPUARMState *env, const ARMCPRegInfo *ri,
+@@ -4003,6 +4036,8 @@ static void vmsa_ttbr_write(CPUARMState *env, const ARMCPRegInfo *ri,
+         tlb_flush(CPU(cpu));
+     }
+     raw_write(env, ri, value);
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, value);
+ }
+ 
+ static void vmsa_tcr_ttbr_el2_write(CPUARMState *env, const ARMCPRegInfo *ri,
+@@ -4022,6 +4057,8 @@ static void vmsa_tcr_ttbr_el2_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                             ARMMMUIdxBit_E20_0);
+     }
+     raw_write(env, ri, value);
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, value);
+ }
+ 
+ static void vttbr_write(CPUARMState *env, const ARMCPRegInfo *ri,
+@@ -4042,6 +4079,8 @@ static void vttbr_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                             ARMMMUIdxBit_Stage2);
+         raw_write(env, ri, value);
+     }
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, value);
+ }
+ 
+ static const ARMCPRegInfo vmsa_pmsa_cp_reginfo[] = {
+@@ -4086,7 +4125,7 @@ static const ARMCPRegInfo vmsa_cp_reginfo[] = {
+       .opc0 = 3, .crn = 2, .crm = 0, .opc1 = 0, .opc2 = 2,
+       .access = PL1_RW, .accessfn = access_tvm_trvm,
+       .writefn = vmsa_tcr_el12_write,
+-      .resetfn = vmsa_ttbcr_reset, .raw_writefn = raw_write,
++      .resetfn = vmsa_ttbcr_reset, .raw_writefn = raw_write_tcr_el,
+       .fieldoffset = offsetof(CPUARMState, cp15.tcr_el[1]) },
+     { .name = "TTBCR", .cp = 15, .crn = 2, .crm = 0, .opc1 = 0, .opc2 = 2,
+       .access = PL1_RW, .accessfn = access_tvm_trvm,
+@@ -4803,6 +4842,8 @@ static void sctlr_write(CPUARMState *env, const ARMCPRegInfo *ri,
+          */
+         arm_rebuild_hflags(env);
+     }
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%s=%16" PRIx64 "\n", ri->name, value);
+ }
+ 
+ static CPAccessResult fpexc32_access(CPUARMState *env, const ARMCPRegInfo *ri,
+@@ -5577,7 +5618,7 @@ static const ARMCPRegInfo el2_cp_reginfo[] = {
+       .fieldoffset = offsetof(CPUARMState, cp15.vttbr_el2) },
+     { .name = "SCTLR_EL2", .state = ARM_CP_STATE_BOTH,
+       .opc0 = 3, .opc1 = 4, .crn = 1, .crm = 0, .opc2 = 0,
+-      .access = PL2_RW, .raw_writefn = raw_write, .writefn = sctlr_write,
++      .access = PL2_RW, .raw_writefn = raw_write_sctlr, .writefn = sctlr_write,
+       .fieldoffset = offsetof(CPUARMState, cp15.sctlr_el[2]) },
+     { .name = "TPIDR_EL2", .state = ARM_CP_STATE_BOTH,
+       .opc0 = 3, .opc1 = 4, .crn = 13, .crm = 0, .opc2 = 2,
+@@ -7635,7 +7676,7 @@ void register_cp_regs_for_features(ARMCPU *cpu)
+             { .name = "SCTLR_EL3", .state = ARM_CP_STATE_AA64,
+               .opc0 = 3, .opc1 = 6, .crn = 1, .crm = 0, .opc2 = 0,
+               .access = PL3_RW,
+-              .raw_writefn = raw_write, .writefn = sctlr_write,
++              .raw_writefn = raw_write_sctlr, .writefn = sctlr_write,
+               .fieldoffset = offsetof(CPUARMState, cp15.sctlr_el[3]),
+               .resetvalue = cpu->reset_sctlr },
+             REGINFO_SENTINEL
+@@ -7985,7 +8026,7 @@ void register_cp_regs_for_features(ARMCPU *cpu)
+             .bank_fieldoffsets = { offsetof(CPUARMState, cp15.sctlr_s),
+                                    offsetof(CPUARMState, cp15.sctlr_ns) },
+             .writefn = sctlr_write, .resetvalue = cpu->reset_sctlr,
+-            .raw_writefn = raw_write,
++            .raw_writefn = raw_write_sctlr,
+         };
+         if (arm_feature(env, ARM_FEATURE_XSCALE)) {
+             /* Normally we would always end the TB on an SCTLR write, but Linux
+diff --git a/target/i386/helper.c b/target/i386/helper.c
+index c3a6e4fabe..a50e046b29 100644
+--- a/target/i386/helper.c
++++ b/target/i386/helper.c
+@@ -492,6 +492,10 @@ void x86_cpu_dump_state(CPUState *cs, FILE *f, int flags)
+                      env->gdt.base, env->gdt.limit);
+         qemu_fprintf(f, "IDT=     %016" PRIx64 " %08x\n",
+                      env->idt.base, env->idt.limit);
++
++        qemu_log_mask(CPU_LOG_MMUSHELL, "GDTR=%016" PRIx64  "|limit=%08x\n", env->gdt.base, env->gdt.limit);
++        qemu_log_mask(CPU_LOG_MMUSHELL, "IDTR=%016" PRIx64  "|limit=%08x\n", env->idt.base, env->idt.limit);
++
+         qemu_fprintf(f, "CR0=%08x CR2=%016" PRIx64 " CR3=%016" PRIx64 " CR4=%08x\n",
+                      (uint32_t)env->cr[0],
+                      env->cr[2],
+@@ -508,6 +512,10 @@ void x86_cpu_dump_state(CPUState *cs, FILE *f, int flags)
+                      (uint32_t)env->gdt.base, env->gdt.limit);
+         qemu_fprintf(f, "IDT=     %08x %08x\n",
+                      (uint32_t)env->idt.base, env->idt.limit);
++
++        qemu_log_mask(CPU_LOG_MMUSHELL, "GDTR=%08" PRIx32 "|limit=%08x\n", (uint32_t)env->gdt.base, env->gdt.limit);
++        qemu_log_mask(CPU_LOG_MMUSHELL, "IDTR=%08" PRIx32  "|limit=%08x\n", (uint32_t)env->idt.base, env->idt.limit);
++
+         qemu_fprintf(f, "CR0=%08x CR2=%08x CR3=%08x CR4=%08x\n",
+                      (uint32_t)env->cr[0],
+                      (uint32_t)env->cr[2],
+@@ -669,7 +677,10 @@ void cpu_x86_update_cr3(CPUX86State *env, target_ulong new_cr3)
+     if (env->cr[0] & CR0_PG_MASK) {
+         qemu_log_mask(CPU_LOG_MMU,
+                         "CR3 update: CR3=" TARGET_FMT_lx "\n", new_cr3);
+-        tlb_flush(env_cpu(env));
++
++        qemu_log_mask(CPU_LOG_MMUSHELL,"CR3=" TARGET_FMT_lx "\n", new_cr3);
++
++	tlb_flush(env_cpu(env));
+     }
+ }
+ 
+diff --git a/target/i386/seg_helper.c b/target/i386/seg_helper.c
+index b96de068ca..fae9b20448 100644
+--- a/target/i386/seg_helper.c
++++ b/target/i386/seg_helper.c
+@@ -1208,6 +1208,15 @@ static void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
+ {
+     CPUX86State *env = &cpu->env;
+ 
++    #ifdef TARGET_X86_64
++        qemu_log_mask(CPU_LOG_MMUSHELL, "GDTR=%016" PRIx64  "|limit=%08x\n", env->gdt.base, env->gdt.limit);
++        qemu_log_mask(CPU_LOG_MMUSHELL, "IDTR=%016" PRIx64  "|limit=%08x\n", env->idt.base, env->idt.limit);
++    #else
++        qemu_log_mask(CPU_LOG_MMUSHELL, "GDTR=%08" PRIx32 "|limit=%08x\n", env->gdt.base, env->gdt.limit);
++        qemu_log_mask(CPU_LOG_MMUSHELL, "IDTR=%08" PRIx32  "|limit=%08x\n", env->idt.base, env->idt.limit);
++    #endif
++
++
+     if (qemu_loglevel_mask(CPU_LOG_INT)) {
+         if ((env->cr[0] & CR0_PE_MASK)) {
+             static int count;
+diff --git a/target/i386/smm_helper.c b/target/i386/smm_helper.c
+index eb5aa6eb3d..3b6cd3e3f6 100644
+--- a/target/i386/smm_helper.c
++++ b/target/i386/smm_helper.c
+@@ -54,6 +54,14 @@ void do_smm_enter(X86CPU *cpu)
+     qemu_log_mask(CPU_LOG_INT, "SMM: enter\n");
+     log_cpu_state_mask(CPU_LOG_INT, CPU(cpu), CPU_DUMP_CCOP);
+ 
++    #ifdef TARGET_X86_64
++        qemu_log_mask(CPU_LOG_MMUSHELL, "GDT=%016" PRIx64  "|limit=%08x\n", env->gdt.base, env->gdt.limit);
++        qemu_log_mask(CPU_LOG_MMUSHELL, "IDT=%016" PRIx64  "|limit=%08x\n", env->idt.base, env->idt.limit);
++    #else
++        qemu_log_mask(CPU_LOG_MMUSHELL, "GDT=%08" PRIx32 "|limit=%08x\n", env->gdt.base, env->gdt.limit);
++        qemu_log_mask(CPU_LOG_MMUSHELL, "IDT=%08" PRIx32  "|limit=%08x\n", env->idt.base, env->idt.limit);
++    #endif
++
+     env->msr_smi_count++;
+     env->hflags |= HF_SMM_MASK;
+     if (env->hflags2 & HF2_NMI_MASK) {
+@@ -327,6 +335,14 @@ void helper_rsm(CPUX86State *env)
+ 
+     qemu_log_mask(CPU_LOG_INT, "SMM: after RSM\n");
+     log_cpu_state_mask(CPU_LOG_INT, CPU(cpu), CPU_DUMP_CCOP);
++    #ifdef TARGET_X86_64
++        qemu_log_mask(CPU_LOG_MMUSHELL, "GDTR=%016" PRIx64  "|limit=%08x\n", env->gdt.base, env->gdt.limit);
++        qemu_log_mask(CPU_LOG_MMUSHELL, "IDTR=%016" PRIx64  "|limit=%08x\n", env->idt.base, env->idt.limit);
++    #else
++        qemu_log_mask(CPU_LOG_MMUSHELL, "GDTR=%08" PRIx32 "|limit=%08x\n", env->gdt.base, env->gdt.limit);
++        qemu_log_mask(CPU_LOG_MMUSHELL, "IDTR=%08" PRIx32  "|limit=%08x\n", env->idt.base, env->idt.limit);
++    #endif
++
+ }
+ 
+ #endif /* !CONFIG_USER_ONLY */
+diff --git a/target/mips/cp0_helper.c b/target/mips/cp0_helper.c
+index bbf12e4a97..f727fd15e8 100644
+--- a/target/mips/cp0_helper.c
++++ b/target/mips/cp0_helper.c
+@@ -859,6 +859,7 @@ void helper_dmtc0_entrylo1(CPUMIPSState *env, uint64_t arg1)
+ void helper_mtc0_context(CPUMIPSState *env, target_ulong arg1)
+ {
+     env->CP0_Context = (env->CP0_Context & 0x007FFFFF) | (arg1 & ~0x007FFFFF);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "Context=" TARGET_FMT_lx "\n", env->CP0_Context);
+ }
+ 
+ void helper_mtc0_memorymapid(CPUMIPSState *env, target_ulong arg1)
+@@ -880,12 +881,26 @@ void update_pagemask(CPUMIPSState *env, target_ulong arg1, int32_t *pagemask)
+          mask == 0x003F || mask == 0x00FF || mask == 0x03FF ||
+          mask == 0x0FFF || mask == 0x3FFF || mask == 0xFFFF)) {
+         env->CP0_PageMask = arg1 & (0x1FFFFFFF & (TARGET_PAGE_MASK << 1));
++
++        #if defined(TARGET_MIPS64)
++            qemu_log_mask(CPU_LOG_MMUSHELL, "PageMask=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_PageMask);
++        #else
++            qemu_log_mask(CPU_LOG_MMUSHELL, "PageMask=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_PageMask);
++        #endif
++
+     }
+ }
+ 
+ void helper_mtc0_pagemask(CPUMIPSState *env, target_ulong arg1)
+ {
+     update_pagemask(env, arg1, &env->CP0_PageMask);
++
++    #if defined(TARGET_MIPS64)
++        qemu_log_mask(CPU_LOG_MMUSHELL, "PageMask=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_PageMask);
++    #else
++        qemu_log_mask(CPU_LOG_MMUSHELL, "PageMask=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_PageMask);
++    #endif
++
+ }
+ 
+ void helper_mtc0_pagegrain(CPUMIPSState *env, target_ulong arg1)
+@@ -896,6 +911,13 @@ void helper_mtc0_pagegrain(CPUMIPSState *env, target_ulong arg1)
+                          (env->CP0_PageGrain & ~env->CP0_PageGrain_rw_bitmask);
+     compute_hflags(env);
+     restore_pamask(env);
++
++    #if defined(TARGET_MIPS64)
++        qemu_log_mask(CPU_LOG_MMUSHELL, "PageGrain=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_PageGrain);
++    #else
++        qemu_log_mask(CPU_LOG_MMUSHELL, "PageGrain=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_PageGrain);
++    #endif
++
+ }
+ 
+ void helper_mtc0_segctl0(CPUMIPSState *env, target_ulong arg1)
+@@ -904,6 +926,7 @@ void helper_mtc0_segctl0(CPUMIPSState *env, target_ulong arg1)
+ 
+     env->CP0_SegCtl0 = arg1 & CP0SC0_MASK;
+     tlb_flush(cs);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "SegCtl0=" TARGET_FMT_lx "\n", env->CP0_SegCtl0);
+ }
+ 
+ void helper_mtc0_segctl1(CPUMIPSState *env, target_ulong arg1)
+@@ -912,6 +935,7 @@ void helper_mtc0_segctl1(CPUMIPSState *env, target_ulong arg1)
+ 
+     env->CP0_SegCtl1 = arg1 & CP0SC1_MASK;
+     tlb_flush(cs);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "SegCtl1=" TARGET_FMT_lx "\n", env->CP0_SegCtl1);
+ }
+ 
+ void helper_mtc0_segctl2(CPUMIPSState *env, target_ulong arg1)
+@@ -920,6 +944,7 @@ void helper_mtc0_segctl2(CPUMIPSState *env, target_ulong arg1)
+ 
+     env->CP0_SegCtl2 = arg1 & CP0SC2_MASK;
+     tlb_flush(cs);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "SegCtl2=" TARGET_FMT_lx "\n", env->CP0_SegCtl2);
+ }
+ 
+ void helper_mtc0_pwfield(CPUMIPSState *env, target_ulong arg1)
+@@ -982,6 +1007,8 @@ void helper_mtc0_pwfield(CPUMIPSState *env, target_ulong arg1)
+                 (old_ptew << CP0PF_PTEW);
+     }
+ #endif
++
++qemu_log_mask(CPU_LOG_MMUSHELL, "PWField=" TARGET_FMT_lx "\n", env->CP0_PWField);
+ }
+ 
+ void helper_mtc0_pwsize(CPUMIPSState *env, target_ulong arg1)
+@@ -991,6 +1018,7 @@ void helper_mtc0_pwsize(CPUMIPSState *env, target_ulong arg1)
+ #else
+     env->CP0_PWSize = arg1 & 0x3FFFFFFF;
+ #endif
++qemu_log_mask(CPU_LOG_MMUSHELL, "PWSize=" TARGET_FMT_lx "\n", env->CP0_PWSize);
+ }
+ 
+ void helper_mtc0_wired(CPUMIPSState *env, target_ulong arg1)
+@@ -1002,6 +1030,12 @@ void helper_mtc0_wired(CPUMIPSState *env, target_ulong arg1)
+     } else {
+         env->CP0_Wired = arg1 % env->tlb->nb_tlb;
+     }
++
++    #if defined(TARGET_MIPS64)
++       qemu_log_mask(CPU_LOG_MMUSHELL, "Wired=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_Wired);
++    #else
++	qemu_log_mask(CPU_LOG_MMUSHELL, "Wired=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_Wired);
++    #endif
+ }
+ 
+ void helper_mtc0_pwctl(CPUMIPSState *env, target_ulong arg1)
+@@ -1009,8 +1043,10 @@ void helper_mtc0_pwctl(CPUMIPSState *env, target_ulong arg1)
+ #if defined(TARGET_MIPS64)
+     /* PWEn = 0. Hardware page table walking is not implemented. */
+     env->CP0_PWCtl = (env->CP0_PWCtl & 0x000000C0) | (arg1 & 0x5C00003F);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "PWCtl=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_PWCtl);
+ #else
+     env->CP0_PWCtl = (arg1 & 0x800000FF);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "PWCtl=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_PWCtl);
+ #endif
+ }
+ 
+@@ -1247,6 +1283,12 @@ void helper_mtc0_ebase(CPUMIPSState *env, target_ulong arg1)
+         mask |= ~0x3FFFFFFF;
+     }
+     env->CP0_EBase = (env->CP0_EBase & ~mask) | (arg1 & mask);
++
++    #if defined(TARGET_MIPS64)
++        qemu_log_mask(CPU_LOG_MMUSHELL, "EBase=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_EBase);
++    #else
++        qemu_log_mask(CPU_LOG_MMUSHELL, "EBase=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_EBase);
++    #endif
+ }
+ 
+ void helper_mttc0_ebase(CPUMIPSState *env, target_ulong arg1)
+@@ -1282,6 +1324,12 @@ target_ulong helper_mftc0_configx(CPUMIPSState *env, target_ulong idx)
+ void helper_mtc0_config0(CPUMIPSState *env, target_ulong arg1)
+ {
+     env->CP0_Config0 = (env->CP0_Config0 & 0x81FFFFF8) | (arg1 & 0x00000007);
++
++    #if defined(TARGET_MIPS64)
++        qemu_log_mask(CPU_LOG_MMUSHELL, "Config=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_Config0);
++    #else
++        qemu_log_mask(CPU_LOG_MMUSHELL, "Config=" TARGET_FMT_lx "\n", env->CP0_Config0);
++    #endif
+ }
+ 
+ void helper_mtc0_config2(CPUMIPSState *env, target_ulong arg1)
+@@ -1302,6 +1350,12 @@ void helper_mtc0_config4(CPUMIPSState *env, target_ulong arg1)
+ {
+     env->CP0_Config4 = (env->CP0_Config4 & (~env->CP0_Config4_rw_bitmask)) |
+                        (arg1 & env->CP0_Config4_rw_bitmask);
++
++    #if defined(TARGET_MIPS64)
++        qemu_log_mask(CPU_LOG_MMUSHELL, "Config4=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_Config4);
++    #else
++        qemu_log_mask(CPU_LOG_MMUSHELL, "Config4=" TARGET_FMT_lx "\n", env->CP0_Config4);
++    #endif
+ }
+ 
+ void helper_mtc0_config5(CPUMIPSState *env, target_ulong arg1)
+@@ -1311,6 +1365,12 @@ void helper_mtc0_config5(CPUMIPSState *env, target_ulong arg1)
+     env->CP0_EntryHi_ASID_mask = (env->CP0_Config5 & (1 << CP0C5_MI)) ?
+             0x0 : (env->CP0_Config4 & (1 << CP0C4_AE)) ? 0x3ff : 0xff;
+     compute_hflags(env);
++
++    #if defined(TARGET_MIPS64)
++        qemu_log_mask(CPU_LOG_MMUSHELL, "Config5=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_Config5);
++    #else
++        qemu_log_mask(CPU_LOG_MMUSHELL, "Config5=" TARGET_FMT_lx "\n", env->CP0_Config5);
++    #endif
+ }
+ 
+ void helper_mtc0_lladdr(CPUMIPSState *env, target_ulong arg1)
+diff --git a/target/mips/helper.c b/target/mips/helper.c
+index afd78b1990..09a30bbebe 100644
+--- a/target/mips/helper.c
++++ b/target/mips/helper.c
+@@ -523,6 +523,7 @@ static void raise_mmu_exception(CPUMIPSState *env, target_ulong address,
+     }
+     env->CP0_Context = (env->CP0_Context & ~0x007fffff) |
+                        ((address >> 9) & 0x007ffff0);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "Context=" TARGET_FMT_lx "\n", env->CP0_Context);
+     env->CP0_EntryHi = (env->CP0_EntryHi & env->CP0_EntryHi_ASID_mask) |
+                        (env->CP0_EntryHi & (1 << CP0EnHi_EHINV)) |
+                        (address & (TARGET_PAGE_MASK << 1));
+@@ -871,6 +872,7 @@ refill:
+         env->CP0_PageMask = pw_pagemask;
+         env->CP0_EntryLo0 = pw_entrylo0;
+         env->CP0_EntryLo1 = pw_entrylo1;
++	qemu_log_mask(CPU_LOG_MMUSHELL, "PageMask=" TARGET_FMT_lx "\n", env->CP0_PageMask);
+ 
+         /*
+          * The hardware page walker inserts a page into the TLB in a manner
+@@ -883,6 +885,7 @@ refill:
+         env->CP0_PageMask = tmp_pagemask;
+         env->CP0_EntryLo0 = tmp_entrylo0;
+         env->CP0_EntryLo1 = tmp_entrylo1;
++	qemu_log_mask(CPU_LOG_MMUSHELL, "PageMask=" TARGET_FMT_lx "\n", env->CP0_PageMask);
+     }
+     return true;
+ }
+diff --git a/target/mips/op_helper.c b/target/mips/op_helper.c
+index 9552b280e0..007976b8f1 100644
+--- a/target/mips/op_helper.c
++++ b/target/mips/op_helper.c
+@@ -844,6 +844,13 @@ void r4k_helper_tlbr(CPUMIPSState *env)
+                         ((uint64_t)tlb->XI1 << CP0EnLo_XI) | (tlb->C1 << 3) |
+                         get_entrylo_pfn_from_tlb(tlb->PFN[1] >> 12);
+     }
++
++    #if defined(TARGET_MIPS64)
++        qemu_log_mask(CPU_LOG_MMUSHELL, "PageMask=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_PageMask);
++    #else
++        qemu_log_mask(CPU_LOG_MMUSHELL, "PageMask=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_PageMask);
++    #endif
++
+ }
+ 
+ void helper_tlbwi(CPUMIPSState *env)
+diff --git a/target/mips/translate.c b/target/mips/translate.c
+index 25b595a17d..dc93eb1d4b 100644
+--- a/target/mips/translate.c
++++ b/target/mips/translate.c
+@@ -7945,7 +7945,7 @@ static void gen_mtc0(DisasContext *ctx, TCGv arg, int reg, int sel)
+             check_pw(ctx);
+             gen_mtc0_store32(arg, offsetof(CPUMIPSState, CP0_PWBase));
+             register_name = "PWBase";
+-            break;
++	    break;
+         case CP0_REG05__PWFIELD:
+             check_pw(ctx);
+             gen_helper_mtc0_pwfield(cpu_env, arg);
+@@ -8475,7 +8475,7 @@ static void gen_mtc0(DisasContext *ctx, TCGv arg, int reg, int sel)
+             tcg_gen_st_tl(arg, cpu_env,
+                           offsetof(CPUMIPSState, CP0_KScratch[sel - 2]));
+             register_name = "KScratch";
+-            break;
++	    break;
+         default:
+             goto cp0_unimplemented;
+         }
+@@ -10442,7 +10442,14 @@ static void gen_cp0(CPUMIPSState *env, DisasContext *ctx, uint32_t opc,
+             gen_load_gpr(t0, rt);
+             gen_mtc0(ctx, t0, rd, ctx->opcode & 0x7);
+             tcg_temp_free(t0);
+-        }
++
++	    // Very poor but functional...
++	    int sel = (ctx->opcode & 0x7);
++	    if((rd == 5) & (sel == 5))
++		    qemu_log_mask(CPU_LOG_MMUSHELL, "PWBase=" TARGET_FMT_lx "\n", env->CP0_PWBase);
++	    if((rd == 31) & (sel >= 2) & (sel <= 7))
++		    qemu_log_mask(CPU_LOG_MMUSHELL, "KScratch%d=" TARGET_FMT_lx "\n", sel - 1, env->CP0_KScratch[sel - 2]);
++	}
+         opn = "mtc0";
+         break;
+ #if defined(TARGET_MIPS64)
+@@ -31045,6 +31052,28 @@ void mips_cpu_dump_state(CPUState *cs, FILE *f, int flags)
+     CPUMIPSState *env = &cpu->env;
+     int i;
+ 
++    qemu_fprintf(f, "Context " TARGET_FMT_lx "\n",env->CP0_Context);
++    qemu_fprintf(f, "ContextConfig: Unimplemented!\n");
++    qemu_fprintf(f, "PageMask 0x%08x\n",env->CP0_PageMask);
++    qemu_fprintf(f, "PageGrain 0x%08x\n",env->CP0_PageGrain);
++    qemu_fprintf(f, "SegCtl0 " TARGET_FMT_lx "\n",env->CP0_SegCtl0);
++    qemu_fprintf(f, "SegCtl1 " TARGET_FMT_lx "\n",env->CP0_SegCtl1);
++    qemu_fprintf(f, "SegCtl2 " TARGET_FMT_lx "\n",env->CP0_SegCtl2);
++    qemu_fprintf(f, "PWBase " TARGET_FMT_lx "\n",env->CP0_PWBase);
++    qemu_fprintf(f, "PWField " TARGET_FMT_lx "\n",env->CP0_PWField);
++    qemu_fprintf(f, "PWSize " TARGET_FMT_lx "\n",env->CP0_PWSize);
++    qemu_fprintf(f, "Wired 0x%08x\n",env->CP0_Wired);
++    qemu_fprintf(f, "PWCtl 0x%08x\n",env->CP0_PWCtl);
++    qemu_fprintf(f, "EBase " TARGET_FMT_lx "\n",env->CP0_EBase);
++    qemu_fprintf(f, "Config 0x%08x\n",env->CP0_Config0);
++    qemu_fprintf(f, "Config1 0x%08x\n",env->CP0_Config1);
++    qemu_fprintf(f, "Config2 0x%08x\n",env->CP0_Config2);
++    qemu_fprintf(f, "Config3 0x%08x\n",env->CP0_Config3);
++    qemu_fprintf(f, "Config4 0x%08x\n",env->CP0_Config4);
++    qemu_fprintf(f, "Config5 0x%08x\n",env->CP0_Config5);
++    qemu_fprintf(f, "PRiD 0x%08x\n",env->CP0_PRid);
++
++
+     qemu_fprintf(f, "pc=0x" TARGET_FMT_lx " HI=0x" TARGET_FMT_lx
+                  " LO=0x" TARGET_FMT_lx " ds %04x "
+                  TARGET_FMT_lx " " TARGET_FMT_ld "\n",
+@@ -31073,6 +31102,7 @@ void mips_cpu_dump_state(CPUState *cs, FILE *f, int flags)
+                  env->CP0_Config4, env->CP0_Config5);
+     if ((flags & CPU_DUMP_FPU) && (env->hflags & MIPS_HFLAG_FPU)) {
+         fpu_dump_state(env, f, flags);
++
+     }
+ }
+ 
+@@ -31243,6 +31273,18 @@ void cpu_state_reset(CPUMIPSState *env)
+     env->msair = env->cpu_model->MSAIR;
+     env->insn_flags = env->cpu_model->insn_flags;
+ 
++#if defined(TARGET_MIPS64)
++    qemu_log_mask(CPU_LOG_MMUSHELL, "PageGrain=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_PageGrain);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "Config=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_Config0);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "Config4=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_Config4);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "Config5=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_Config5);
++#else
++    qemu_log_mask(CPU_LOG_MMUSHELL, "PageGrain=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_PageGrain);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "Config=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_Config0);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "Config4=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_Config4);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "Config5=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_Config5);
++#endif
++
+ #if defined(CONFIG_USER_ONLY)
+     env->CP0_Status = (MIPS_HFLAG_UM << CP0St_KSU);
+ # ifdef TARGET_MIPS64
+@@ -31288,11 +31330,25 @@ void cpu_state_reset(CPUMIPSState *env)
+     env->CP0_Wired = 0;
+     env->CP0_GlobalNumber = (cs->cpu_index & 0xFF) << CP0GN_VPId;
+     env->CP0_EBase = (cs->cpu_index & 0x3FF);
++
++    #if defined(TARGET_MIPS64)
++        qemu_log_mask(CPU_LOG_MMUSHELL, "Wired=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_Wired);
++    #else
++        qemu_log_mask(CPU_LOG_MMUSHELL, "Wired=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_Wired);
++    #endif
++
+     if (mips_um_ksegs_enabled()) {
+         env->CP0_EBase |= 0x40000000;
+     } else {
+         env->CP0_EBase |= (int32_t)0x80000000;
+     }
++
++    #if defined(TARGET_MIPS64)
++        qemu_log_mask(CPU_LOG_MMUSHELL, "EBase=" TARGET_FMT_lx "\n", (unsigned long int)env->CP0_EBase);
++    #else
++        qemu_log_mask(CPU_LOG_MMUSHELL, "EBase=" TARGET_FMT_lx "\n", (unsigned int)env->CP0_EBase);
++    #endif
++
+     if (env->CP0_Config3 & (1 << CP0C3_CMGCR)) {
+         env->CP0_CMGCRBase = 0x1fbf8000 >> 4;
+     }
+@@ -31367,6 +31423,11 @@ void cpu_state_reset(CPUMIPSState *env)
+                          (1 << CP0SC_EU) | (2 << CP0SC_C)) << 16;
+     /* XKPhys (note, SegCtl2.XR = 0, so XAM won't be used) */
+     env->CP0_SegCtl1 |= (CP0SC_AM_UK << CP0SC1_XAM);
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "SegCtl0=" TARGET_FMT_lx "\n", env->CP0_SegCtl0);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "SegCtl1=" TARGET_FMT_lx "\n", env->CP0_SegCtl1);
++    qemu_log_mask(CPU_LOG_MMUSHELL, "SegCtl2=" TARGET_FMT_lx "\n", env->CP0_SegCtl2);
++
+ #endif
+     if ((env->insn_flags & ISA_MIPS32R6) &&
+         (env->active_fpu.fcr0 & (1 << FCR0_F64))) {
+@@ -31383,6 +31444,7 @@ void cpu_state_reset(CPUMIPSState *env)
+         /* PRI  = 12 */
+         /* PTEI =  2 */
+         env->CP0_PWField = 0x0C30C302;
++	qemu_log_mask(CPU_LOG_MMUSHELL, "PWSize=" TARGET_FMT_lx "\n", env->CP0_PWSize);
+     } else {
+         /* GDI  =  0 */
+         /* UDI  =  0 */
+@@ -31392,6 +31454,8 @@ void cpu_state_reset(CPUMIPSState *env)
+         env->CP0_PWField = 0x02;
+     }
+ 
++    qemu_log_mask(CPU_LOG_MMUSHELL, "PWField=" TARGET_FMT_lx "\n", env->CP0_PWField);
++
+     if (env->CP0_Config3 & (1 << CP0C3_ISA) & (1 << (CP0C3_ISA + 1))) {
+         /*  microMIPS on reset when Config3.ISA is 3 */
+         env->hflags |= MIPS_HFLAG_M16;
+diff --git a/target/mips/translate_init.inc.c b/target/mips/translate_init.inc.c
+index 6d145a905a..482cfe2123 100644
+--- a/target/mips/translate_init.inc.c
++++ b/target/mips/translate_init.inc.c
+@@ -366,7 +366,7 @@ const mips_def_t mips_defs[] =
+     },
+     {
+         /* FIXME:
+-         * Config3: CMGCR, PW, VZ, CTXTC, CDMM, TL
++         * Config3: VZ, CTXTC, CDMM, TL
+          * Config4: MMUExtDef
+          * Config5: MRP
+          * FIR(FCR0): Has2008
+@@ -380,10 +380,11 @@ const mips_def_t mips_defs[] =
+                        (2 << CP0C1_DS) | (4 << CP0C1_DL) | (3 << CP0C1_DA) |
+                        (1 << CP0C1_PC) | (1 << CP0C1_FP),
+         .CP0_Config2 = MIPS_CONFIG2,
+-        .CP0_Config3 = MIPS_CONFIG3 | (1U << CP0C3_M) | (1 << CP0C3_MSAP) |
++        .CP0_Config3 = MIPS_CONFIG3 | (1U << CP0C3_M) |
++                       (1 << CP0C3_CMGCR) | (1 << CP0C3_MSAP) |
+                        (1 << CP0C3_BP) | (1 << CP0C3_BI) | (1 << CP0C3_SC) |
+-                       (1 << CP0C3_ULRI) | (1 << CP0C3_RXI) | (1 << CP0C3_LPA) |
+-                       (1 << CP0C3_VInt),
++                       (1 << CP0C3_PW) | (1 << CP0C3_ULRI) | (1 << CP0C3_RXI) |
++                       (1 << CP0C3_LPA) | (1 << CP0C3_VInt),
+         .CP0_Config4 = MIPS_CONFIG4 | (1U << CP0C4_M) | (2 << CP0C4_IE) |
+                        (0x1c << CP0C4_KScrExist),
+         .CP0_Config4_rw_bitmask = 0,
+diff --git a/target/ppc/misc_helper.c b/target/ppc/misc_helper.c
+index 55b68d1246..0c2a35314e 100644
+--- a/target/ppc/misc_helper.c
++++ b/target/ppc/misc_helper.c
+@@ -36,8 +36,17 @@ void helper_load_dump_spr(CPUPPCState *env, uint32_t sprn)
+ 
+ void helper_store_dump_spr(CPUPPCState *env, uint32_t sprn)
+ {
+-    qemu_log("Write SPR %d %03x <= " TARGET_FMT_lx "\n", sprn, sprn,
+-             env->spr[sprn]);
++    #ifdef PPC_DUMP_SPR_ACCESSES
++        qemu_log("Write SPR %d %03x <= " TARGET_FMT_lx "\n", sprn, sprn,
++                 env->spr[sprn]);
++    #endif
++
++    #ifdef TARGET_PPC64
++    if(sprn == SPR_HRMOR)
++        qemu_log_mask(CPU_LOG_MMUSHELL, "HRMOR=%016" PRIx64 "\n", env->spr[SPR_HRMOR]);
++    else if (sprn == SPR_RMOR)
++         qemu_log_mask(CPU_LOG_MMUSHELL, "RMOR=%016" PRIx64 "\n", env->spr[SPR_RMOR]);
++    #endif
+ }
+ 
+ #ifdef TARGET_PPC64
+diff --git a/target/ppc/mmu-hash32.c b/target/ppc/mmu-hash32.c
+index 55cf156a0b..8546448d15 100644
+--- a/target/ppc/mmu-hash32.c
++++ b/target/ppc/mmu-hash32.c
+@@ -376,6 +376,8 @@ static hwaddr ppc_hash32_htab_lookup(PowerPCCPU *cpu,
+     hash = vsid ^ pgidx;
+     ptem = (vsid << 7) | (pgidx >> 10);
+ 
++    qemu_log_mask(CPU_LOG_MMUSHELL, "SDR1=" TARGET_FMT_lx "|vsid=%" PRIx32 "\n", cpu->env.spr[SPR_SDR1], vsid);
++
+     /* Page address translation */
+     qemu_log_mask(CPU_LOG_MMU, "htab_base " TARGET_FMT_plx
+             " htab_mask " TARGET_FMT_plx
+diff --git a/target/ppc/mmu-hash64.c b/target/ppc/mmu-hash64.c
+index e5baabf0e1..5b1d6db45c 100644
+--- a/target/ppc/mmu-hash64.c
++++ b/target/ppc/mmu-hash64.c
+@@ -59,6 +59,7 @@ static ppc_slb_t *slb_lookup(PowerPCCPU *cpu, target_ulong eaddr)
+ 
+         LOG_SLB("%s: slot %d %016" PRIx64 " %016"
+                     PRIx64 "\n", __func__, n, slb->esid, slb->vsid);
++
+         /*
+          * We check for 1T matches on all MMUs here - if the MMU
+          * doesn't have 1T segment support, we will have prevented 1T
+@@ -660,6 +661,8 @@ static hwaddr ppc_hash64_htab_lookup(PowerPCCPU *cpu,
+     ptem = (slb->vsid & SLB_VSID_PTEM) | ((epn >> 16) & HPTE64_V_AVPN);
+     ptem |= HPTE64_V_VALID;
+ 
++    qemu_log_mask(CPU_LOG_MMUSHELL, "SDR1=" TARGET_FMT_lx "|vsid=" TARGET_FMT_lx "\n", cpu->env.spr[SPR_SDR1], vsid);
++
+     /* Page address translation */
+     qemu_log_mask(CPU_LOG_MMU,
+             "htab_base " TARGET_FMT_plx " htab_mask " TARGET_FMT_plx
+diff --git a/target/ppc/mmu_helper.c b/target/ppc/mmu_helper.c
+index 86c667b094..53b3c00135 100644
+--- a/target/ppc/mmu_helper.c
++++ b/target/ppc/mmu_helper.c
+@@ -1836,6 +1836,9 @@ static inline void do_invalidate_BAT(CPUPPCState *env, target_ulong BATu,
+ static inline void dump_store_bat(CPUPPCState *env, char ID, int ul, int nr,
+                                   target_ulong value)
+ {
++    qemu_log_mask(CPU_LOG_MMUSHELL, "%cBAT%d%c=" TARGET_FMT_lx "\n", ID,
++             nr, ul == 0 ? 'U' : 'L', value);
++
+     LOG_BATS("Set %cBAT%d%c to " TARGET_FMT_lx " (" TARGET_FMT_lx ")\n", ID,
+              nr, ul == 0 ? 'u' : 'l', value, env->nip);
+ }
+@@ -2087,6 +2090,9 @@ void ppc_tlb_invalidate_one(CPUPPCState *env, target_ulong addr)
+ void ppc_store_sdr1(CPUPPCState *env, target_ulong value)
+ {
+     PowerPCCPU *cpu = env_archcpu(env);
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "SDR1=" TARGET_FMT_lx "|vsid=-1\n", value);
++
+     qemu_log_mask(CPU_LOG_MMU, "%s: " TARGET_FMT_lx "\n", __func__, value);
+     assert(!cpu->vhyp);
+ #if defined(TARGET_PPC64)
+@@ -2117,6 +2123,8 @@ void ppc_store_ptcr(CPUPPCState *env, target_ulong value)
+     target_ulong ptcr_mask = PTCR_PATB | PTCR_PATS;
+     target_ulong patbsize = value & PTCR_PATS;
+ 
++    qemu_log_mask(CPU_LOG_MMUSHELL, "PTCR=" TARGET_FMT_lx "\n", value);
++
+     qemu_log_mask(CPU_LOG_MMU, "%s: " TARGET_FMT_lx "\n", __func__, value);
+ 
+     assert(!cpu->vhyp);
+@@ -2153,6 +2161,8 @@ target_ulong helper_load_sr(CPUPPCState *env, target_ulong sr_num)
+ 
+ void helper_store_sr(CPUPPCState *env, target_ulong srnum, target_ulong value)
+ {
++    qemu_log_mask(CPU_LOG_MMUSHELL, "SR%d=" TARGET_FMT_lx "\n", (int)srnum, value);
++
+     qemu_log_mask(CPU_LOG_MMU,
+             "%s: reg=%d " TARGET_FMT_lx " " TARGET_FMT_lx "\n", __func__,
+             (int)srnum, value, env->sr[srnum]);
+diff --git a/target/ppc/translate.c b/target/ppc/translate.c
+index 807d14faaa..de2a32069b 100644
+--- a/target/ppc/translate.c
++++ b/target/ppc/translate.c
+@@ -37,6 +37,7 @@
+ #include "exec/log.h"
+ #include "qemu/atomic128.h"
+ 
++#include "include/qemu/log.h"
+ 
+ #define CPU_SINGLE_STEP 0x1
+ #define CPU_BRANCH_STEP 0x2
+@@ -7690,9 +7691,13 @@ void ppc_cpu_dump_state(CPUState *cs, FILE *f, int flags)
+ #endif
+         if (env->spr_cb[SPR_SDR1].name) { /* SDR1 Exists */
+             qemu_fprintf(f, " SDR1 " TARGET_FMT_lx " ", env->spr[SPR_SDR1]);
+-        }
++
++	    qemu_log_mask(CPU_LOG_MMUSHELL, "SDR1=" TARGET_FMT_lx "|vsid=-1\n", env->spr[SPR_SDR1]);
++	}
+         if (env->spr_cb[SPR_PTCR].name) { /* PTCR Exists */
+             qemu_fprintf(f, " PTCR " TARGET_FMT_lx " ", env->spr[SPR_PTCR]);
++
++	    qemu_log_mask(CPU_LOG_MMUSHELL, "PTCR=" TARGET_FMT_lx "\n", env->spr[SPR_PTCR]);
+         }
+         qemu_fprintf(f, "  DAR " TARGET_FMT_lx "  DSISR " TARGET_FMT_lx "\n",
+                      env->spr[SPR_DAR], env->spr[SPR_DSISR]);
+diff --git a/target/ppc/translate_init.inc.c b/target/ppc/translate_init.inc.c
+index e853164a86..5bee587428 100644
+--- a/target/ppc/translate_init.inc.c
++++ b/target/ppc/translate_init.inc.c
+@@ -69,11 +69,9 @@ static void spr_read_generic(DisasContext *ctx, int gprn, int sprn)
+ 
+ static void spr_store_dump_spr(int sprn)
+ {
+-#ifdef PPC_DUMP_SPR_ACCESSES
+     TCGv_i32 t0 = tcg_const_i32(sprn);
+     gen_helper_store_dump_spr(cpu_env, t0);
+     tcg_temp_free_i32(t0);
+-#endif
+ }
+ 
+ static void spr_write_generic(DisasContext *ctx, int sprn, int gprn)
+diff --git a/target/riscv/csr.c b/target/riscv/csr.c
+index 11d184cd16..5dc357956c 100644
+--- a/target/riscv/csr.c
++++ b/target/riscv/csr.c
+@@ -529,6 +529,9 @@ static int write_mtvec(CPURISCVState *env, int csrno, target_ulong val)
+     } else {
+         qemu_log_mask(LOG_UNIMP, "CSR_MTVEC: reserved mode not supported\n");
+     }
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "MTVEC=" TARGET_FMT_lx "\n", val);
++
+     return 0;
+ }
+ 
+@@ -717,6 +720,9 @@ static int write_stvec(CPURISCVState *env, int csrno, target_ulong val)
+     } else {
+         qemu_log_mask(LOG_UNIMP, "CSR_STVEC: reserved mode not supported\n");
+     }
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "STVEC=" TARGET_FMT_lx "\n", val);
++
+     return 0;
+ }
+ 
+@@ -847,6 +853,9 @@ static int write_satp(CPURISCVState *env, int csrno, target_ulong val)
+             env->satp = val;
+         }
+     }
++
++    qemu_log_mask(CPU_LOG_MMUSHELL, "SATP=" TARGET_FMT_lx "\n", val);
++
+     return 0;
+ }
+ 
+diff --git a/util/log.c b/util/log.c
+index 2da6cb31dc..bda0e7f53d 100644
+--- a/util/log.c
++++ b/util/log.c
+@@ -333,7 +333,9 @@ const QEMULogItem qemu_log_items[] = {
+     { CPU_LOG_PLUGIN, "plugin", "output from TCG plugins\n"},
+ #endif
+     { LOG_STRACE, "strace",
+-      "log every user-mode syscall, its input, and its result" },
++      "log every user-mode syscall, its input, and its result\n" },
++    { CPU_LOG_MMUSHELL, "mmushell",
++      "collect changes in MMU registers to use with mmushell"},
+     { 0, NULL, NULL },
+ };
+ 

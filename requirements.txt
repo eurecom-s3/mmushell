@@ -1,0 +1,17 @@
+wheel
+qmp
+prettytable
+tqdm
+colorama
+git+git://github.com/cea-sec/miasm.git@218492cd10b339a8d47d2fdbd61953fcf954fb8b#egg=miasm
+pyparsing
+future
+portion
+pyyaml
+compress_pickle[lz4]
+more-itertools
+ipython
+cerberus
+sortedcontainers
+numpy
+pyelftools
