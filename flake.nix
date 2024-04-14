@@ -44,6 +44,8 @@
                         requirements = builtins.readFile ./requirements.txt;
                       };
                     };
+
+                    packages = with pkgs; [ python311Packages.numpy ];
                   }
                 ];
               };
