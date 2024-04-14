@@ -18,6 +18,7 @@ from random import uniform
 from struct import iter_unpack, unpack
 from dataclasses import dataclass
 import multiprocessing as mp
+
 # import cProfile
 import portion
 from more_itertools import divide
@@ -25,8 +26,10 @@ from IPython import embed
 
 logger = logging.getLogger(__name__)
 
-def _dummy_f(): # Workaround pickle defaultdict
+
+def _dummy_f():  # Workaround pickle defaultdict
     return defaultdict(set)
+
 
 # For AArch64 TCR.TxSZ and TCR.TGx control the size of the address space in mode x (0 user, 1 kernel) and the size of the granule (the data
 # page). The structure of the radix tree is very complicated and depends on both TxSZ and TGx (see get_trees_struct()). The tree can have
@@ -55,14 +58,16 @@ class Data:
 class CPURegAArch64(CPUReg):
     @classmethod
     def get_register_obj(cls, reg_name, value):
-         return globals()[reg_name](value)
+        return globals()[reg_name](value)
 
 
 class TCR_EL1(CPURegAArch64):
     def is_valid(self, value):
-        if CPU.extract_bits(value, 6, 1) != 0 or \
-           CPU.extract_bits(value, 35, 1) != 0 or \
-           CPU.extract_bits(value, 59, 5) != 0:
+        if (
+            CPU.extract_bits(value, 6, 1) != 0
+            or CPU.extract_bits(value, 35, 1) != 0
+            or CPU.extract_bits(value, 59, 5) != 0
+        ):
             return False
         else:
             return True
@@ -80,7 +85,12 @@ class TCR_EL1(CPURegAArch64):
             self.valid = False
 
     def is_mmu_equivalent_to(self, other):
-        return self.t0sz == other.t0sz and self.t1sz == other.t1sz and self.tg0 == other.tg0 and self.tg1 == other.tg1
+        return (
+            self.t0sz == other.t0sz
+            and self.t1sz == other.t1sz
+            and self.tg0 == other.tg0
+            and self.tg1 == other.tg1
+        )
 
     def count_fields_equals(self, other):
         tot = 0
@@ -152,7 +162,7 @@ class TCR_EL1(CPURegAArch64):
             elif 28 <= size_offset <= 38:
                 t = (2, 1 << (42 - size_offset))
             else:
-                t= (3, 1 << (53 - size_offset))
+                t = (3, 1 << (53 - size_offset))
         elif granule == 65536:
             if 12 <= size_offset <= 21:
                 t = (1, 1 << (25 - size_offset))
@@ -167,8 +177,12 @@ class TCR_EL1(CPURegAArch64):
 
     def get_trees_struct(self):
         ret = {"kernel": None, "user": None}
-        ret["kernel"] = self._get_tree_struct(self.get_kernel_granule(), self.get_kernel_size_offset())
-        ret["user"] = self._get_tree_struct(self.get_user_granule(), self.get_user_size_offset())
+        ret["kernel"] = self._get_tree_struct(
+            self.get_kernel_granule(), self.get_kernel_size_offset()
+        )
+        ret["user"] = self._get_tree_struct(
+            self.get_user_granule(), self.get_user_size_offset()
+        )
 
         # WORKAROUND: some OS do not set correctly the register values, using invalid one on real hw...
         if ret["kernel"]["top_table_size"] == -1:
@@ -214,7 +228,6 @@ class TTBR(CPURegAArch64):
         x = self._calculate_x()
         return CPU.extract_bits(value, x, 47 - x + 1) << x
 
-
     def __init__(self, value):
         self.value = value
         if self.is_valid(value):
@@ -231,24 +244,41 @@ class TTBR(CPURegAArch64):
     def __repr__(self):
         return f"{self.reg_name} {hex(self.value)} => ASID:{hex(self.asid)}, Address:{hex(self.address)}, CnP: {self.cnp}"
 
+
 class TTBR0_EL1(TTBR):
     reg_name = "TTBR0_EL1"
     mode = "user"
+
 
 class TTBR1_EL1(TTBR):
     reg_name = "TTBR1_EL1"
     mode = "kernel"
 
+
 #####################################################################
 # 64 bit entries and page table
 #####################################################################
+
 
 class TEntry64(TableEntry):
     entry_size = 8
     entry_name = "TEntry64"
     size = 0
-    labels = ["Address:", "Attributes:", "Secure:", "Permissions:", "Shareability:",
-              "Accessed:", "Global:", "Block:", "Guarded:", "Dirty:", "Continous:", "Kernel exec:", "Exec:"]
+    labels = [
+        "Address:",
+        "Attributes:",
+        "Secure:",
+        "Permissions:",
+        "Shareability:",
+        "Accessed:",
+        "Global:",
+        "Block:",
+        "Guarded:",
+        "Dirty:",
+        "Continous:",
+        "Kernel exec:",
+        "Exec:",
+    ]
     addr_fmt = "0x{:016x}"
 
     def __init__(self, address, lower_flags, upper_flags):
@@ -261,22 +291,25 @@ class TEntry64(TableEntry):
 
     def __repr__(self):
         e_resume = self.entry_resume_stringified()
-        return str([self.labels[i] + " " + str(e_resume[i]) for i in range(len(self.labels))])
+        return str(
+            [self.labels[i] + " " + str(e_resume[i]) for i in range(len(self.labels))]
+        )
 
     def entry_resume(self):
-        return [self.address,
-                self.extract_attributes(),
-                self.is_secure_entry(),
-                self.extract_permissions(),
-                self.extract_shareability(),
-                self.is_accessed_entry(),
-                self.is_global_entry(),
-                self.is_block_entry(),
-                self.is_guarded_entry(),
-                self.is_dirty_entry(),
-                self.is_continuous_entry(),
-                self.is_kernel_executable_entry(),
-                self.is_executable_entry()
+        return [
+            self.address,
+            self.extract_attributes(),
+            self.is_secure_entry(),
+            self.extract_permissions(),
+            self.extract_shareability(),
+            self.is_accessed_entry(),
+            self.is_global_entry(),
+            self.is_block_entry(),
+            self.is_guarded_entry(),
+            self.is_dirty_entry(),
+            self.is_continuous_entry(),
+            self.is_kernel_executable_entry(),
+            self.is_executable_entry(),
         ]
 
     def entry_resume_stringified(self):
@@ -295,28 +328,38 @@ class TEntry64(TableEntry):
     # Lower attributes (Block and Pages)
     def extract_attributes(self):
         return MMU.extract_bits(self.lower_flags, 0, 3)
+
     def is_secure_entry(self):
         return not bool(MMU.extract_bits(self.lower_flags, 3, 1))
+
     def extract_permissions(self):
         return MMU.extract_bits(self.lower_flags, 4, 2)
+
     def extract_shareability(self):
         return MMU.extract_bits(self.lower_flags, 6, 2)
+
     def is_accessed_entry(self):
         return bool(MMU.extract_bits(self.lower_flags, 8, 1))
+
     def is_global_entry(self):
         return not bool(MMU.extract_bits(self.lower_flags, 9, 1))
+
     def is_block_entry(self):
         return not bool(MMU.extract_bits(self.lower_flags, 14, 1))
 
     # Upper attributes (Block and Pages)
     def is_guarded_entry(self):
         return bool(MMU.extract_bits(self.upper_flags, 0, 1))
+
     def is_dirty_entry(self):
         return bool(MMU.extract_bits(self.upper_flags, 1, 1))
+
     def is_continuous_entry(self):
         return bool(MMU.extract_bits(self.upper_flags, 2, 1))
+
     def is_kernel_executable_entry(self):
         return not bool(MMU.extract_bits(self.upper_flags, 3, 1))
+
     def is_executable_entry(self):
         return not bool(MMU.extract_bits(self.upper_flags, 4, 1))
 
@@ -332,7 +375,15 @@ class TEntry64(TableEntry):
         permissions = self.extract_permissions()
         u = bool(permissions & 0x1)
         w = not bool(permissions & 0x2)
-        return (True, w, self.is_kernel_executable_entry(), u, u and w, self.is_executable_entry())
+        return (
+            True,
+            w,
+            self.is_kernel_executable_entry(),
+            u,
+            u and w,
+            self.is_executable_entry(),
+        )
+
 
 class PTP(TEntry64):
     entry_name = "PTP"
@@ -344,28 +395,38 @@ class PTP(TEntry64):
     # Lower attributes
     def extract_attributes(self):
         return 0
+
     def is_secure_entry(self):
         return not bool(MMU.extract_bits(self.upper_flags, 13, 1))
+
     def extract_permissions(self):
         return MMU.extract_bits(self.upper_flags, 11, 2)
+
     def extract_shareability(self):
         return 0
+
     def is_accessed_entry(self):
         return False
+
     def is_global_entry(self):
         return False
+
     def is_block_entry(self):
         return False
 
     # Upper attributes
     def is_guarded_entry(self):
         return False
+
     def is_dirty_entry(self):
         return False
+
     def is_continuous_entry(self):
         return False
+
     def is_kernel_executable_entry(self):
         return not bool(MMU.extract_bits(self.upper_flags, 9, 1))
+
     def is_executable_entry(self):
         return not bool(MMU.extract_bits(self.upper_flags, 10, 1))
 
@@ -374,44 +435,69 @@ class PTP(TEntry64):
         u = not bool(permissions & 0x1)
         w = not bool(permissions & 0x2)
 
-        return (True, w, self.is_kernel_executable_entry(), u, u and w, self.is_executable_entry())
+        return (
+            True,
+            w,
+            self.is_kernel_executable_entry(),
+            u,
+            u and w,
+            self.is_executable_entry(),
+        )
+
 
 # Page table pointers
 class PTP_4KB(PTP):
     entry_name = "PTP_4KB"
+
     @staticmethod
     def extract_addr(entry):
         return MMU.extract_bits(entry, 12, 36) << 12
 
+
 class PTP_4KB_L0(PTP_4KB):
     entry_name = "PTP_4KB_L0"
+
+
 class PTP_4KB_L1(PTP_4KB):
     entry_name = "PTP_4KB_L1"
+
+
 class PTP_4KB_L2(PTP_4KB):
     entry_name = "PTP_4KB_L2"
 
+
 class PTP_16KB(PTP):
     entry_name = "PTP_16KB"
+
     @staticmethod
     def extract_addr(entry):
         return MMU.extract_bits(entry, 14, 34) << 14
 
+
 class PTP_16KB_L0(PTP_16KB):
     entry_name = "PTP_16KB_L0"
+
+
 class PTP_16KB_L1(PTP_16KB):
     entry_name = "PTP_16KB_L1"
+
+
 class PTP_16KB_L2(PTP_16KB):
     entry_name = "PTP_16KB_L2"
 
 
 class PTP_64KB(PTP):
     entry_name = "PTP_64KB"
+
     @staticmethod
     def extract_addr(entry):
         return MMU.extract_bits(entry, 16, 32) << 16
 
+
 class PTP_64KB_L0(PTP_64KB):
     entry_name = "PTP_64KB_L0"
+
+
 class PTP_64KB_L1(PTP_64KB):
     entry_name = "PTP_64KB_L1"
 
@@ -420,61 +506,93 @@ class PTP_64KB_L1(PTP_64KB):
 class PTBLOCK_L1_4KB(TEntry64):
     entry_name = "PTBLOCK_L1_4KB"
     size = 1024 * 1024 * 1024
+
     @staticmethod
     def extract_addr(entry):
         return MMU.extract_bits(entry, 30, 18) << 30
 
+
 class PTBLOCK_L2_4KB(TEntry64):
     entry_name = "PTBLOCK_L2_4KB"
     size = 2 * 1024 * 1024
+
     @staticmethod
     def extract_addr(entry):
         return MMU.extract_bits(entry, 21, 27) << 21
 
+
 class PTBLOCK_L2_16KB(TEntry64):
     entry_name = "PTBLOCK_L2_16KB"
     size = 32 * 1024 * 1024
+
     @staticmethod
     def extract_addr(entry):
         return MMU.extract_bits(entry, 25, 23) << 25
 
+
 class PTBLOCK_L2_64KB(TEntry64):
     entry_name = "PTBLOCK_L2_64KB"
     size = 512 * 1024 * 1024
+
     @staticmethod
     def extract_addr(entry):
         return MMU.extract_bits(entry, 29, 19) << 29
+
 
 # Page pointers
 class PTPAGE_4KB(TEntry64):
     entry_name = "PTPAGE_4KB"
     size = 4 * 1024
+
     @staticmethod
     def extract_addr(entry):
         return MMU.extract_bits(entry, 12, 36) << 12
 
+
 class PTPAGE_16KB(TEntry64):
     entry_name = "PTPAGE_16KB"
     size = 16 * 1024
+
     @staticmethod
     def extract_addr(entry):
         return MMU.extract_bits(entry, 14, 34) << 14
 
+
 class PTPAGE_64KB(TEntry64):
     entry_name = "PTPAGE_64KB"
     size = 64 * 1024
+
     @staticmethod
     def extract_addr(entry):
-        return MMU.extract_bits(entry, 12, 4) << 48 | MMU.extract_bits(entry, 16, 32) << 16
+        return (
+            MMU.extract_bits(entry, 12, 4) << 48 | MMU.extract_bits(entry, 16, 32) << 16
+        )
+
 
 class ReservedEntry(TEntry64):
     entry_name = "Reserved"
     size = 0
 
+
 class PageTableAArch64(PageTable):
     entry_size = 8
-    table_fields = ["Entry address", "Pointed address", "Attributes", "Secure", "Permsissions", "Shareability",
-              "Accessed", "Global", "Block", "Guarded", "Dirty", "Continous", "Kernel exec", "Exec", "Classes"]
+    table_fields = [
+        "Entry address",
+        "Pointed address",
+        "Attributes",
+        "Secure",
+        "Permsissions",
+        "Shareability",
+        "Accessed",
+        "Global",
+        "Block",
+        "Guarded",
+        "Dirty",
+        "Continous",
+        "Kernel exec",
+        "Exec",
+        "Classes",
+    ]
     addr_fmt = "0x{:016x}"
 
     def __repr__(self):
@@ -484,9 +602,13 @@ class PageTableAArch64(PageTable):
         for entry_class in self.entries:
             for entry_idx, entry_obj in self.entries[entry_class].items():
                 entry_addr = self.address + (entry_idx * self.entry_size)
-                table.add_row([self.addr_fmt.format(entry_addr)] + entry_obj.entry_resume_stringified() + [entry_class.entry_name])
+                table.add_row(
+                    [self.addr_fmt.format(entry_addr)]
+                    + entry_obj.entry_resume_stringified()
+                    + [entry_class.entry_name]
+                )
 
-        table.sortby="Entry address"
+        table.sortby = "Entry address"
         return str(table)
 
 
@@ -497,8 +619,7 @@ class PhysicalMemory(PhysicalMemoryDefault):
 class CPU(CPUDefault):
     @classmethod
     def from_cpu_config(cls, cpu_config, **kwargs):
-            return CPUAArch64(cpu_config)
-
+        return CPUAArch64(cpu_config)
 
     def __init__(self, features):
         super(CPU, self).__init__(features)
@@ -517,7 +638,7 @@ class CPU(CPUDefault):
 class CPUAArch64(CPU):
     def __init__(self, features):
         super(CPUAArch64, self).__init__(features)
-        self.processor_features["opcode_to_mmu_regs"] =  {
+        self.processor_features["opcode_to_mmu_regs"] = {
             (1, 0, 2, 0, 2): "TCR_EL1",
             (1, 5, 2, 0, 2): "TCR_EL1",
             (1, 6, 2, 0, 2): "TCR_EL3",
@@ -525,22 +646,23 @@ class CPUAArch64(CPU):
             (1, 5, 2, 0, 0): "TTBR0_EL1",
             (1, 0, 2, 0, 1): "TTBR1_EL1",
             (1, 5, 2, 0, 1): "TTBR1_EL1",
-            (1, 0, 5, 2, 0): "ESR_EL1", # Read
-            (1, 0, 6, 0, 0): "FAR_EL1", # Read
-            (1, 5, 4, 0, 1): "ELR_EL1", # Read
-            (1, 0, 1, 0, 0): "SCTLR_EL1", # R/W
+            (1, 0, 5, 2, 0): "ESR_EL1",  # Read
+            (1, 0, 6, 0, 0): "FAR_EL1",  # Read
+            (1, 5, 4, 0, 1): "ELR_EL1",  # Read
+            (1, 0, 1, 0, 0): "SCTLR_EL1",  # R/W
             (1, 5, 1, 0, 0): "SCTLR_EL1",
             (1, 6, 1, 0, 0): "SCTLR_EL3",
-            (1, 4, 4, 1, 0): "SP_EL1", # Write
-            (1, 5, 4, 0, 0): "SPSR_EL1", # R/W
+            (1, 4, 4, 1, 0): "SP_EL1",  # Write
+            (1, 5, 4, 0, 0): "SPSR_EL1",  # R/W
             (1, 6, 4, 0, 0): "SPSR_EL3",
-            (1, 0, 12, 0, 0): "VBAR_EL1", # Write
-            (1, 6, 12, 0, 0): "VBAR_EL3", # Write
-            (1, 0, 13, 0, 1): "CONTEXTIDR_EL1", # R/W
-            (1, 0, 0, 7, 0): "ID_AA64MMFR0_EL1" # Read
-
+            (1, 0, 12, 0, 0): "VBAR_EL1",  # Write
+            (1, 6, 12, 0, 0): "VBAR_EL3",  # Write
+            (1, 0, 13, 0, 1): "CONTEXTIDR_EL1",  # R/W
+            (1, 0, 0, 7, 0): "ID_AA64MMFR0_EL1",  # Read
         }
-        self.processor_features["opcode_to_gregs"] = ["X{}".format(i) for i in range(31)]
+        self.processor_features["opcode_to_gregs"] = [
+            "X{}".format(i) for i in range(31)
+        ]
 
         CPU.processor_features = self.processor_features
         CPU.registers_values = self.registers_values
@@ -549,24 +671,24 @@ class CPUAArch64(CPU):
         # Collect locations of opcodes
 
         # RET and ERET
-        if  CPUAArch64.extract_bits(instr, 0, 5) == 0 and \
-            CPUAArch64.extract_bits(instr, 10, 22) == 0b1101011001011111000000:
-            return {page_addr + offset: {"register": "",
-                                        "instruction": "RET"
-                                        }}
+        if (
+            CPUAArch64.extract_bits(instr, 0, 5) == 0
+            and CPUAArch64.extract_bits(instr, 10, 22) == 0b1101011001011111000000
+        ):
+            return {page_addr + offset: {"register": "", "instruction": "RET"}}
 
-        elif CPUAArch64.extract_bits(instr, 0, 32) == 0b11010110100111110000001111100000:
-            return {page_addr + offset: {"register": "",
-                                        "instruction": "ERET"
-                                        }}
+        elif (
+            CPUAArch64.extract_bits(instr, 0, 32) == 0b11010110100111110000001111100000
+        ):
+            return {page_addr + offset: {"register": "", "instruction": "ERET"}}
 
         # BLR/BR
-        elif CPUAArch64.extract_bits(instr, 0, 5) == 0b00000 and \
-             CPUAArch64.extract_bits(instr, 22, 10) == 0b1101011000 and \
-             CPUAArch64.extract_bits(instr, 10, 11) == 0b11111000000:
-            return {page_addr + offset: {"register": "",
-                                        "instruction": "BLR"
-                                        }}
+        elif (
+            CPUAArch64.extract_bits(instr, 0, 5) == 0b00000
+            and CPUAArch64.extract_bits(instr, 22, 10) == 0b1101011000
+            and CPUAArch64.extract_bits(instr, 10, 11) == 0b11111000000
+        ):
+            return {page_addr + offset: {"register": "", "instruction": "BLR"}}
 
         # MSR opcode for MMU registers (write on MMU register)
         elif CPUAArch64.extract_bits(instr, 20, 12) == 0b110101010001:
@@ -584,11 +706,15 @@ class CPUAArch64(CPU):
             if reg_idx in self.processor_features["opcode_to_mmu_regs"]:
                 mmu_regs = self.processor_features["opcode_to_mmu_regs"][reg_idx]
                 rt = self.processor_features["opcode_to_gregs"][rt]
-                return {page_addr + offset: {"register": mmu_regs,
-                                            "gpr": [rt],
-                                            "f_addr": -1,
-                                            "instruction": "MSR"
-                                            }}
+                return {
+                    page_addr
+                    + offset: {
+                        "register": mmu_regs,
+                        "gpr": [rt],
+                        "f_addr": -1,
+                        "instruction": "MSR",
+                    }
+                }
 
         # MRS opcode for MMU registers (read from MMU register)
         elif CPUAArch64.extract_bits(instr, 20, 12) == 0b110101010011:
@@ -607,11 +733,15 @@ class CPUAArch64(CPU):
                 mmu_regs = self.processor_features["opcode_to_mmu_regs"][reg_idx]
                 rt = self.processor_features["opcode_to_gregs"][rt]
 
-                return {page_addr + offset: {"register": mmu_regs,
-                                            "gpr": [rt],
-                                            "f_addr": -1,
-                                            "instruction": "MRS"
-                                            }}
+                return {
+                    page_addr
+                    + offset: {
+                        "register": mmu_regs,
+                        "gpr": [rt],
+                        "f_addr": -1,
+                        "instruction": "MRS",
+                    }
+                }
         else:
             return {}
         return {}
@@ -624,7 +754,7 @@ class CPUAArch64(CPU):
         mdis.dontdis_retcall = False
         instr_len = self.processor_features["instr_len"]
 
-        logger = logging.getLogger('asmblock')
+        logger = logging.getLogger("asmblock")
         logger.disabled = True
 
         for addr in tqdm(addreses):
@@ -635,7 +765,6 @@ class CPUAArch64(CPU):
             # Maximum 10000 instructions
             instructions = 0
             while True and instructions <= 10000:
-
                 # Stop if found an invalid instruction
                 try:
                     asmcode = mdis.dis_instr(cur_addr)
@@ -653,9 +782,21 @@ class CPUAArch64(CPU):
                             break
 
                     # JMPs and special opcodes
-                    elif asmcode.name in ["BL", "BLR", "BRK", "HLT", "HVC", "SMC",
-                                          "SVC", "DCPS1", "DCPS2", "DCPS3",
-                                          "DRPS", "WFE", "WFI"]:
+                    elif asmcode.name in [
+                        "BL",
+                        "BLR",
+                        "BRK",
+                        "HLT",
+                        "HVC",
+                        "SMC",
+                        "SVC",
+                        "DCPS1",
+                        "DCPS2",
+                        "DCPS3",
+                        "DRPS",
+                        "WFE",
+                        "WFI",
+                    ]:
                         cur_addr += instr_len
                         break
 
@@ -681,6 +822,7 @@ class Machine(MachineDefault):
 #################################################################
 # MMU Modes
 #################################################################
+
 
 class MMU(MMURadix):
     PAGE_SIZE = 0
@@ -708,7 +850,16 @@ class LONG(MMU):
     map_entries_to_shifts = {"kernel": [], "user": []}
     map_reserved_entries_to_levels = {"kernel": [], "user": []}
 
-    def reconstruct_table(self, mode, frame_addr, frame_size, table_levels, table_size, table_entries, empty_entries):
+    def reconstruct_table(
+        self,
+        mode,
+        frame_addr,
+        frame_size,
+        table_levels,
+        table_size,
+        table_entries,
+        empty_entries,
+    ):
         # Reconstruct table_levels tables, empty tables and data_pages of a given size
         frame_d = defaultdict(dict)
         page_tables = defaultdict(dict)
@@ -720,25 +871,35 @@ class LONG(MMU):
             frame_d.clear()
 
             # Count the empty entries
-            entry_addresses = set(range(table_addr, table_addr + table_size, MMU.entries_size))
+            entry_addresses = set(
+                range(table_addr, table_addr + table_size, MMU.entries_size)
+            )
             empty_count = len(entry_addresses.intersection(empty_entries))
 
             # Reconstruct the content of the table candidate
             for entry_addr in entry_addresses.intersection(table_entries.keys()):
                 entry_idx = (entry_addr - table_addr) // MMU.entries_size
                 for entry_type in table_entries[entry_addr]:
-                    frame_d[entry_type][entry_idx] = table_entries[entry_addr][entry_type]
+                    frame_d[entry_type][entry_idx] = table_entries[entry_addr][
+                        entry_type
+                    ]
 
             # Classify the frame
-            pt_classes = set(self.classify_frame(frame_d, empty_count, int(table_size // MMU.entries_size), mode=mode))
+            pt_classes = set(
+                self.classify_frame(
+                    frame_d, empty_count, int(table_size // MMU.entries_size), mode=mode
+                )
+            )
 
-            if -1 in pt_classes: # Empty
+            if -1 in pt_classes:  # Empty
                 empty_tables.append(table_addr)
-            elif -2 in pt_classes: # Data
+            elif -2 in pt_classes:  # Data
                 data_pages.append(table_addr)
             elif table_levels.intersection(pt_classes):
                 levels = sorted(table_levels.intersection(pt_classes))
-                table_obj = self.page_table_class(table_addr, table_size, deepcopy(frame_d), levels)
+                table_obj = self.page_table_class(
+                    table_addr, table_size, deepcopy(frame_d), levels
+                )
                 for level in levels:
                     page_tables[level][table_addr] = table_obj
             else:
@@ -755,13 +916,18 @@ class LONG(MMU):
             if frame_addr % page_size != 0:
                 continue
 
-            if all([(frame_addr + idx * frame_size) in frames for idx in range(1, frame_per_page)]):
+            if all(
+                [
+                    (frame_addr + idx * frame_size) in frames
+                    for idx in range(1, frame_per_page)
+                ]
+            ):
                 pages.append(frame_addr)
 
         return pages
 
     def parse_parallel_frame(self, addresses, frame_size, pidx, **kwargs):
-        sleep(uniform(pidx, pidx+1) // 1000)
+        sleep(uniform(pidx, pidx + 1) // 1000)
         mm = copy(self.machine.memory)
         mm.reopen()
 
@@ -769,12 +935,12 @@ class LONG(MMU):
         # parse all the records in a frame of 64KB and reconstruct all the different tables
 
         # Prepare thread local dictionaries in which collect data
-        data_pages =  {"user":      [],
-                       "kernel":    []}
-        empty_tables = {"user":     [],
-                       "kernel":    []}
-        page_tables = {"user":      [{} for i in range(self.radix_levels["user"])],
-                       "kernel":    [{} for i in range(self.radix_levels["kernel"])]}
+        data_pages = {"user": [], "kernel": []}
+        empty_tables = {"user": [], "kernel": []}
+        page_tables = {
+            "user": [{} for i in range(self.radix_levels["user"])],
+            "kernel": [{} for i in range(self.radix_levels["kernel"])],
+        }
 
         tcr = kwargs["tcr"]
         trees_struct = tcr.get_trees_struct()
@@ -783,17 +949,23 @@ class LONG(MMU):
         table_entries = defaultdict(dict)
         empty_entries = set()
         total_elems, iterator = addresses
-        for frame_addr in tqdm(iterator, position=-pidx, total=total_elems, leave=False):
+        for frame_addr in tqdm(
+            iterator, position=-pidx, total=total_elems, leave=False
+        ):
             frame_buf = mm.get_data(frame_addr, frame_size)
 
             table_entries.clear()
             empty_entries.clear()
 
             # Unpack entries
-            for entry_idx, entry in enumerate(iter_unpack(self.paging_unpack_format, frame_buf)):
+            for entry_idx, entry in enumerate(
+                iter_unpack(self.paging_unpack_format, frame_buf)
+            ):
                 entry_addr = frame_addr + entry_idx * MMU.entries_size
 
-                entry_classes = self.classify_entry(frame_addr, entry[0]) # In this case frame_addr is not used
+                entry_classes = self.classify_entry(
+                    frame_addr, entry[0]
+                )  # In this case frame_addr is not used
 
                 # Data entry
                 if None in entry_classes:
@@ -810,15 +982,46 @@ class LONG(MMU):
                     table_entries[entry_addr][entry_type] = entry_obj
 
             # Reconstruct kernel tables
-            self.reconstruct_all_tables("kernel", trees_struct, frame_addr, frame_size, table_entries, empty_entries, page_tables, data_pages, empty_tables)
+            self.reconstruct_all_tables(
+                "kernel",
+                trees_struct,
+                frame_addr,
+                frame_size,
+                table_entries,
+                empty_entries,
+                page_tables,
+                data_pages,
+                empty_tables,
+            )
 
             # Reconstruct user tables only if the radix tree have a different shape
             if trees_struct["kernel"] != trees_struct["user"]:
-                self.reconstruct_all_tables("user", trees_struct, frame_addr, frame_size, table_entries, empty_entries, page_tables, data_pages, empty_tables)
+                self.reconstruct_all_tables(
+                    "user",
+                    trees_struct,
+                    frame_addr,
+                    frame_size,
+                    table_entries,
+                    empty_entries,
+                    page_tables,
+                    data_pages,
+                    empty_tables,
+                )
 
         return page_tables, data_pages, empty_tables
 
-    def reconstruct_all_tables(self, mode, tree_struct, frame_addr, frame_size, table_entries, empty_entries, page_tables, data_pages, empty_tables):
+    def reconstruct_all_tables(
+        self,
+        mode,
+        tree_struct,
+        frame_addr,
+        frame_size,
+        table_entries,
+        empty_entries,
+        page_tables,
+        data_pages,
+        empty_tables,
+    ):
         granule = tree_struct[mode]["granule"]
         total_levels = tree_struct[mode]["total_levels"]
         top_table_size = tree_struct[mode]["top_table_size"]
@@ -826,13 +1029,29 @@ class LONG(MMU):
         # Top table has a different size, must be parsed separately
         if granule != top_table_size:
             candidate_levels = list(range(1, total_levels))
-            t, _, _ = self.reconstruct_table(mode, frame_addr, frame_size, [0], top_table_size, table_entries, empty_entries)
+            t, _, _ = self.reconstruct_table(
+                mode,
+                frame_addr,
+                frame_size,
+                [0],
+                top_table_size,
+                table_entries,
+                empty_entries,
+            )
             page_tables[mode][0].update(t[0])
         else:
             candidate_levels = list(range(total_levels))
 
         # Look for other levels
-        t, d, e = self.reconstruct_table(mode, frame_addr, frame_size, candidate_levels, granule, table_entries, empty_entries)
+        t, d, e = self.reconstruct_table(
+            mode,
+            frame_addr,
+            frame_size,
+            candidate_levels,
+            granule,
+            table_entries,
+            empty_entries,
+        )
         for level in t:
             page_tables[mode][level].update(t[level])
         data_pages[mode].extend(d)
@@ -848,16 +1067,16 @@ class LONG(MMU):
 
         # Block or RESERVED for PTL2
         elif class_bits == 0b01:
-
             # For L2 tables this type of entry is RESERVED and treated as EMPTY
             classification.append(ReservedEntry(0, 0, 0))
 
             # SH bits has one configuration reserved (0b01)
             # At least 17:20 must be 0
-            if (MMU.extract_bits(entry, 8, 2) != 0b01 and
-               not MMU.extract_bits(entry, 12, 4) and
-               not MMU.extract_bits(entry, 17, 4)):
-
+            if (
+                MMU.extract_bits(entry, 8, 2) != 0b01
+                and not MMU.extract_bits(entry, 12, 4)
+                and not MMU.extract_bits(entry, 17, 4)
+            ):
                 lower_flags = TEntry64.extract_lower_flags(entry)
                 upper_flags = TEntry64.extract_upper_flags(entry)
 
@@ -867,15 +1086,21 @@ class LONG(MMU):
 
                 if not MMU.extract_bits(entry, 17, 8):
                     addr = PTBLOCK_L2_16KB.extract_addr(addr)
-                    classification.append(PTBLOCK_L2_16KB(addr, lower_flags, upper_flags))
+                    classification.append(
+                        PTBLOCK_L2_16KB(addr, lower_flags, upper_flags)
+                    )
 
                 if not MMU.extract_bits(entry, 17, 12):
                     addr = PTBLOCK_L2_64KB.extract_addr(addr)
-                    classification.append(PTBLOCK_L2_64KB(addr, lower_flags, upper_flags))
+                    classification.append(
+                        PTBLOCK_L2_64KB(addr, lower_flags, upper_flags)
+                    )
 
                 if not MMU.extract_bits(entry, 17, 13):
                     addr = PTBLOCK_L1_4KB.extract_addr(addr)
-                    classification.append(PTBLOCK_L1_4KB(addr, lower_flags, upper_flags))
+                    classification.append(
+                        PTBLOCK_L1_4KB(addr, lower_flags, upper_flags)
+                    )
 
         # Page or Pointer
         else:
@@ -920,28 +1145,26 @@ class LONG(MMU):
             return [None]
         return classification
 
+
 class MMUShell(MMUShellDefault):
-    def __init__(self, completekey='tab', stdin=None, stdout=None, machine={}):
+    def __init__(self, completekey="tab", stdin=None, stdout=None, machine={}):
         super(MMUShell, self).__init__(completekey, stdin, stdout, machine)
 
         if not self.data:
-            self.data = Data(is_tables_found=False,
-                            is_radix_found=False,
-                            is_registers_found=False,
-                            opcodes={},
-                            regs_values={},
-                            page_tables={"user": defaultdict(dict),
-                                         "kernel": defaultdict(dict)},
-                            data_pages={"user": [],
-                                         "kernel": []},
-                            empty_tables={"user": [],
-                                         "kernel": []},
-                            reverse_map_tables = {"user": None,
-                                                 "kernel": None},
-                            reverse_map_pages = {"user": None,
-                                                "kernel": None},
-                            used_tcr=None,
-                            ttbrs=defaultdict(dict))
+            self.data = Data(
+                is_tables_found=False,
+                is_radix_found=False,
+                is_registers_found=False,
+                opcodes={},
+                regs_values={},
+                page_tables={"user": defaultdict(dict), "kernel": defaultdict(dict)},
+                data_pages={"user": [], "kernel": []},
+                empty_tables={"user": [], "kernel": []},
+                reverse_map_tables={"user": None, "kernel": None},
+                reverse_map_pages={"user": None, "kernel": None},
+                used_tcr=None,
+                ttbrs=defaultdict(dict),
+            )
 
     def reload_data_from_file(self, data_filename):
         super(MMUShell, self).reload_data_from_file(data_filename)
@@ -958,7 +1181,9 @@ class MMUShell(MMUShellDefault):
             return
 
         logger.info("Look for opcodes related to MMU setup...")
-        parallel_results = self.machine.apply_parallel(65536, self.machine.cpu.parse_opcodes_parallel)
+        parallel_results = self.machine.apply_parallel(
+            65536, self.machine.cpu.parse_opcodes_parallel
+        )
 
         opcodes = {}
         logger.info("Reaggregate threads data...")
@@ -968,8 +1193,12 @@ class MMUShell(MMUShellDefault):
         self.data.opcodes = opcodes
 
         # Filter to look only for opcodes which write on MMU register only and not read from them or from other registers
-        filter_f = lambda it: True if it[1]["register"] == "TCR_EL1" and it[1]["instruction"] == "MSR" else False
-        mmu_wr_opcodes = {k: v for k,v in filter(filter_f, opcodes.items())}
+        filter_f = (
+            lambda it: True
+            if it[1]["register"] == "TCR_EL1" and it[1]["instruction"] == "MSR"
+            else False
+        )
+        mmu_wr_opcodes = {k: v for k, v in filter(filter_f, opcodes.items())}
 
         logging.info("Use heuristics to find function addresses...")
         logging.info("This analysis could be extremely slow!")
@@ -978,13 +1207,20 @@ class MMUShell(MMUShellDefault):
         logging.info("Identify register values using data flow analysis...")
 
         # We use data flow analysis and merge the results
-        dataflow_values = self.machine.cpu.find_registers_values_dataflow(mmu_wr_opcodes)
+        dataflow_values = self.machine.cpu.find_registers_values_dataflow(
+            mmu_wr_opcodes
+        )
 
         filtered_values = defaultdict(set)
         for register, values in dataflow_values.items():
             for value in values:
                 reg_obj = CPURegAArch64.get_register_obj(register, value)
-                if reg_obj.valid and not any([val_obj.is_mmu_equivalent_to(reg_obj) for val_obj in filtered_values[register]]):
+                if reg_obj.valid and not any(
+                    [
+                        val_obj.is_mmu_equivalent_to(reg_obj)
+                        for val_obj in filtered_values[register]
+                    ]
+                ):
                     filtered_values[register].add(reg_obj)
 
         self.data.regs_values = filtered_values
@@ -1034,8 +1270,12 @@ class MMUShell(MMUShellDefault):
             top_table_size = trees_struct[mode]["top_table_size"]
 
             LONG.radix_levels[mode] = total_levels
-            LONG.map_level_to_table_size[mode] = [top_table_size] + ([granule] * (total_levels - 1))
-            LONG.map_reserved_entries_to_levels[mode] = [[] for i in range(total_levels - 1)] + [[ReservedEntry]]
+            LONG.map_level_to_table_size[mode] = [top_table_size] + (
+                [granule] * (total_levels - 1)
+            )
+            LONG.map_reserved_entries_to_levels[mode] = [
+                [] for i in range(total_levels - 1)
+            ] + [[ReservedEntry]]
 
             if granule == 4096:
                 if total_levels == 1:
@@ -1043,17 +1283,55 @@ class MMUShell(MMUShellDefault):
                     LONG.map_ptr_entries_to_levels[mode] = [None]
                     LONG.map_entries_to_shifts[mode] = {PTPAGE_4KB: 12}
                 elif total_levels == 2:
-                    LONG.map_datapages_entries_to_levels[mode] = [[PTBLOCK_L2_4KB], [PTPAGE_4KB]]
+                    LONG.map_datapages_entries_to_levels[mode] = [
+                        [PTBLOCK_L2_4KB],
+                        [PTPAGE_4KB],
+                    ]
                     LONG.map_ptr_entries_to_levels[mode] = [PTP_4KB_L0, None]
-                    LONG.map_entries_to_shifts[mode] = {PTP_4KB_L0: 21, PTPAGE_4KB: 12, PTBLOCK_L2_4KB: 21}
+                    LONG.map_entries_to_shifts[mode] = {
+                        PTP_4KB_L0: 21,
+                        PTPAGE_4KB: 12,
+                        PTBLOCK_L2_4KB: 21,
+                    }
                 elif total_levels == 3:
-                    LONG.map_datapages_entries_to_levels[mode] = [[PTBLOCK_L1_4KB], [PTBLOCK_L2_4KB], [PTPAGE_4KB]]
-                    LONG.map_ptr_entries_to_levels[mode] = [PTP_4KB_L0, PTP_4KB_L1, None]
-                    LONG.map_entries_to_shifts[mode] = {PTP_4KB_L0: 30, PTP_4KB_L1: 21, PTPAGE_4KB: 12, PTBLOCK_L2_4KB: 21, PTBLOCK_L1_4KB: 30}
+                    LONG.map_datapages_entries_to_levels[mode] = [
+                        [PTBLOCK_L1_4KB],
+                        [PTBLOCK_L2_4KB],
+                        [PTPAGE_4KB],
+                    ]
+                    LONG.map_ptr_entries_to_levels[mode] = [
+                        PTP_4KB_L0,
+                        PTP_4KB_L1,
+                        None,
+                    ]
+                    LONG.map_entries_to_shifts[mode] = {
+                        PTP_4KB_L0: 30,
+                        PTP_4KB_L1: 21,
+                        PTPAGE_4KB: 12,
+                        PTBLOCK_L2_4KB: 21,
+                        PTBLOCK_L1_4KB: 30,
+                    }
                 else:
-                    LONG.map_datapages_entries_to_levels[mode] = [[None], [PTBLOCK_L1_4KB], [PTBLOCK_L2_4KB], [PTPAGE_4KB]]
-                    LONG.map_ptr_entries_to_levels[mode] = [PTP_4KB_L0, PTP_4KB_L1, PTP_4KB_L2, None]
-                    LONG.map_entries_to_shifts[mode] = {PTP_4KB_L0: 39, PTP_4KB_L1: 30, PTP_4KB_L2: 21,PTPAGE_4KB: 12, PTBLOCK_L2_4KB: 21, PTBLOCK_L1_4KB: 30}
+                    LONG.map_datapages_entries_to_levels[mode] = [
+                        [None],
+                        [PTBLOCK_L1_4KB],
+                        [PTBLOCK_L2_4KB],
+                        [PTPAGE_4KB],
+                    ]
+                    LONG.map_ptr_entries_to_levels[mode] = [
+                        PTP_4KB_L0,
+                        PTP_4KB_L1,
+                        PTP_4KB_L2,
+                        None,
+                    ]
+                    LONG.map_entries_to_shifts[mode] = {
+                        PTP_4KB_L0: 39,
+                        PTP_4KB_L1: 30,
+                        PTP_4KB_L2: 21,
+                        PTPAGE_4KB: 12,
+                        PTBLOCK_L2_4KB: 21,
+                        PTBLOCK_L1_4KB: 30,
+                    }
 
             elif granule == 16384:
                 if total_levels == 1:
@@ -1061,31 +1339,89 @@ class MMUShell(MMUShellDefault):
                     LONG.map_ptr_entries_to_levels[mode] = [None]
                     LONG.map_entries_to_shifts[mode] = {PTPAGE_16KB: 14}
                 elif total_levels == 2:
-                    LONG.map_datapages_entries_to_levels[mode] = [[PTBLOCK_L2_16KB], [PTPAGE_16KB]]
+                    LONG.map_datapages_entries_to_levels[mode] = [
+                        [PTBLOCK_L2_16KB],
+                        [PTPAGE_16KB],
+                    ]
                     LONG.map_ptr_entries_to_levels[mode] = [PTP_16KB_L0, None]
-                    LONG.map_entries_to_shifts[mode] = {PTP_16KB_L0: 25, PTPAGE_16KB: 14, PTBLOCK_L2_16KB: 25}
+                    LONG.map_entries_to_shifts[mode] = {
+                        PTP_16KB_L0: 25,
+                        PTPAGE_16KB: 14,
+                        PTBLOCK_L2_16KB: 25,
+                    }
                 elif total_levels == 3:
-                    LONG.map_datapages_entries_to_levels[mode] = [[None], [PTBLOCK_L2_16KB], [PTPAGE_16KB]]
-                    LONG.map_ptr_entries_to_levels[mode] = [PTP_16KB_L0, PTP_16KB_L1, None]
-                    LONG.map_entries_to_shifts[mode] = {PTP_16KB_L0: 36, PTP_16KB_L1: 25, PTPAGE_16KB: 14, PTBLOCK_L2_16KB: 25}
+                    LONG.map_datapages_entries_to_levels[mode] = [
+                        [None],
+                        [PTBLOCK_L2_16KB],
+                        [PTPAGE_16KB],
+                    ]
+                    LONG.map_ptr_entries_to_levels[mode] = [
+                        PTP_16KB_L0,
+                        PTP_16KB_L1,
+                        None,
+                    ]
+                    LONG.map_entries_to_shifts[mode] = {
+                        PTP_16KB_L0: 36,
+                        PTP_16KB_L1: 25,
+                        PTPAGE_16KB: 14,
+                        PTBLOCK_L2_16KB: 25,
+                    }
                 else:
-                    LONG.map_datapages_entries_to_levels[mode] = [[None], [None], [PTBLOCK_L2_16KB], [PTPAGE_16KB]]
-                    LONG.map_ptr_entries_to_levels[mode] = [PTP_16KB_L0, PTP_16KB_L2, None]
-                    LONG.map_entries_to_shifts[mode] = {PTP_16KB_L0: 47, PTP_16KB_L1: 36, PTP_16KB_L2: 25, PTPAGE_16KB: 14, PTBLOCK_L2_16KB: 25}
+                    LONG.map_datapages_entries_to_levels[mode] = [
+                        [None],
+                        [None],
+                        [PTBLOCK_L2_16KB],
+                        [PTPAGE_16KB],
+                    ]
+                    LONG.map_ptr_entries_to_levels[mode] = [
+                        PTP_16KB_L0,
+                        PTP_16KB_L2,
+                        None,
+                    ]
+                    LONG.map_entries_to_shifts[mode] = {
+                        PTP_16KB_L0: 47,
+                        PTP_16KB_L1: 36,
+                        PTP_16KB_L2: 25,
+                        PTPAGE_16KB: 14,
+                        PTBLOCK_L2_16KB: 25,
+                    }
 
             else:
                 if total_levels == 1:
                     LONG.map_datapages_entries_to_levels[mode] = [PTPAGE_64KB]
                     LONG.map_ptr_entries_to_levels[mode] = [None]
-                    LONG.map_entries_to_shifts[mode] = {PTPAGE_64KB: 16, PTBLOCK_L2_64KB: 29}
+                    LONG.map_entries_to_shifts[mode] = {
+                        PTPAGE_64KB: 16,
+                        PTBLOCK_L2_64KB: 29,
+                    }
                 elif total_levels == 2:
-                    LONG.map_datapages_entries_to_levels[mode] = [[PTBLOCK_L2_64KB], [PTPAGE_64KB]]
+                    LONG.map_datapages_entries_to_levels[mode] = [
+                        [PTBLOCK_L2_64KB],
+                        [PTPAGE_64KB],
+                    ]
                     LONG.map_ptr_entries_to_levels[mode] = [PTP_64KB_L0, None]
-                    LONG.map_entries_to_shifts[mode] = {PTP_64KB_L0: 29, PTPAGE_64KB: 16, PTBLOCK_L2_16KB: 29}
+                    LONG.map_entries_to_shifts[mode] = {
+                        PTP_64KB_L0: 29,
+                        PTPAGE_64KB: 16,
+                        PTBLOCK_L2_16KB: 29,
+                    }
                 else:
-                    LONG.map_datapages_entries_to_levels[mode] = [[None], [PTBLOCK_L2_64KB], [PTPAGE_64KB]]
-                    LONG.map_ptr_entries_to_levels[mode] = [PTP_64KB_L0, PTP_64KB_L1, None]
-                    LONG.map_entries_to_shifts[mode] = {PTP_64KB_L0:42, PTP_64KB_L1:29, PTPAGE_64KB: 16, PTBLOCK_L2_64KB: 29}
+                    LONG.map_datapages_entries_to_levels[mode] = [
+                        [None],
+                        [PTBLOCK_L2_64KB],
+                        [PTPAGE_64KB],
+                    ]
+                    LONG.map_ptr_entries_to_levels[mode] = [
+                        PTP_64KB_L0,
+                        PTP_64KB_L1,
+                        None,
+                    ]
+                    LONG.map_entries_to_shifts[mode] = {
+                        PTP_64KB_L0: 42,
+                        PTP_64KB_L1: 29,
+                        PTPAGE_64KB: 16,
+                        PTBLOCK_L2_64KB: 29,
+                    }
 
     def do_find_tables(self, args):
         """Find MMU tables in memory"""
@@ -1096,22 +1432,30 @@ class MMUShell(MMUShellDefault):
 
         # Delete all the previous table data
         if self.data.is_tables_found:
-            self.data.page_tables= { "user": defaultdict(dict),
-                                    "kernel": defaultdict(dict)}
-            self.data.data_pages={  "user": [],
-                                    "kernel": []}
-            self.data.empty_tables={"user": [],
-                                    "kernel": []}
+            self.data.page_tables = {
+                "user": defaultdict(dict),
+                "kernel": defaultdict(dict),
+            }
+            self.data.data_pages = {"user": [], "kernel": []}
+            self.data.empty_tables = {"user": [], "kernel": []}
             self.data.reverse_map_tables = {}
             self.data.reverse_map_pages = {}
 
         # WORKAROUND: initialize here because unpickable!
-        self.data.reverse_map_pages = {"kernel": defaultdict(_dummy_f), "user": defaultdict(_dummy_f)}
-        self.data.reverse_map_tables = {"kernel": defaultdict(_dummy_f), "user": defaultdict(_dummy_f)}
+        self.data.reverse_map_pages = {
+            "kernel": defaultdict(_dummy_f),
+            "user": defaultdict(_dummy_f),
+        }
+        self.data.reverse_map_tables = {
+            "kernel": defaultdict(_dummy_f),
+            "user": defaultdict(_dummy_f),
+        }
 
         # Parse memory in chunk of 64KiB
         logger.info("Look for paging tables...")
-        parallel_results = self.machine.apply_parallel(65536, self.machine.mmu.parse_parallel_frame, tcr=tcr)
+        parallel_results = self.machine.apply_parallel(
+            65536, self.machine.mmu.parse_parallel_frame, tcr=tcr
+        )
         logger.info("Reaggregate threads data...")
         for result in parallel_results:
             page_tables, data_pages, empty_tables = result.get()
@@ -1134,10 +1478,16 @@ class MMUShell(MMUShellDefault):
                 ptr_class = self.machine.mmu.map_ptr_entries_to_levels[mode][lvl]
                 referenced_nxt = []
                 for table_addr in list(self.data.page_tables[mode][lvl].keys()):
-                    for entry_obj in self.data.page_tables[mode][lvl][table_addr].entries[ptr_class].values():
-                        if  entry_obj.address not in self.data.page_tables[mode][lvl + 1] and \
-                            entry_obj.address not in self.data.empty_tables[mode]:
-
+                    for entry_obj in (
+                        self.data.page_tables[mode][lvl][table_addr]
+                        .entries[ptr_class]
+                        .values()
+                    ):
+                        if (
+                            entry_obj.address
+                            not in self.data.page_tables[mode][lvl + 1]
+                            and entry_obj.address not in self.data.empty_tables[mode]
+                        ):
                             # Remove the table
                             self.data.page_tables[mode][lvl].pop(table_addr)
                             break
@@ -1147,32 +1497,41 @@ class MMUShell(MMUShellDefault):
 
                 # Remove table not referenced by upper levels
                 referenced_nxt = set(referenced_nxt)
-                for table_addr in set(self.data.page_tables[mode][lvl + 1].keys()).difference(referenced_nxt):
+                for table_addr in set(
+                    self.data.page_tables[mode][lvl + 1].keys()
+                ).difference(referenced_nxt):
                     self.data.page_tables[mode][lvl + 1].pop(table_addr)
 
         logger.info("Fill reverse maps...")
         for mode in ["user", "kernel"]:
             for lvl in range(0, self.machine.mmu.radix_levels[mode]):
                 ptr_class = self.machine.mmu.map_ptr_entries_to_levels[mode][lvl]
-                page_classes = self.machine.mmu.map_datapages_entries_to_levels[mode][lvl]
+                page_classes = self.machine.mmu.map_datapages_entries_to_levels[mode][
+                    lvl
+                ]
                 for table_addr, table_obj in self.data.page_tables[mode][lvl].items():
                     for entry_obj in table_obj.entries[ptr_class].values():
-                        self.data.reverse_map_tables[mode][lvl][entry_obj.address].add(table_obj.address)
+                        self.data.reverse_map_tables[mode][lvl][entry_obj.address].add(
+                            table_obj.address
+                        )
                     for page_class in page_classes:
                         for entry_obj in table_obj.entries[page_class].values():
-                            self.data.reverse_map_pages[mode][lvl][entry_obj.address].add(table_obj.address)
+                            self.data.reverse_map_pages[mode][lvl][
+                                entry_obj.address
+                            ].add(table_obj.address)
 
         # If kernel and user space use the same configuration, copy kernel data to user
         trees_struct = tcr.get_trees_struct()
         if trees_struct["kernel"] == trees_struct["user"]:
             self.data.page_tables["user"] = self.data.page_tables["kernel"]
             self.data.reverse_map_pages["user"] = self.data.reverse_map_pages["kernel"]
-            self.data.reverse_map_tables["user"] = self.data.reverse_map_tables["kernel"]
+            self.data.reverse_map_tables["user"] = self.data.reverse_map_tables[
+                "kernel"
+            ]
             self.data.data_pages["user"] = self.data.data_pages["kernel"]
             self.data.empty_tables["user"] = self.data.empty_tables["kernel"]
 
         self.data.is_tables_found = True
-
 
     def do_show_table(self, args):
         """Show MMU table at chosen address. Usage: show_table ADDRESS (user, kernel) [level size]"""
@@ -1202,13 +1561,14 @@ class MMUShell(MMUShellDefault):
         mode = args[1]
 
         if len(args) == 4:
-
             try:
                 lvl = self.parse_int(args[2])
                 if lvl > (self.machine.mmu.radix_levels[mode] - 1):
                     raise ValueError
             except ValueError:
-                logger.warning(f"Level must be an integer between 0 and {self.machine.mmu.radix_levels[mode] - 1}")
+                logger.warning(
+                    f"Level must be an integer between 0 and {self.machine.mmu.radix_levels[mode] - 1}"
+                )
                 return
 
             trees_struct = LONG.tcr.get_trees_struct()
@@ -1223,7 +1583,9 @@ class MMUShell(MMUShellDefault):
             try:
                 table_size = self.parse_int(args[3])
                 if table_size not in valid_sizes[mode][lvl]:
-                    logging.warning(f"Size not allowed for choosen level! Valid sizes are:{valid_sizes[mode][lvl]}")
+                    logging.warning(
+                        f"Size not allowed for choosen level! Valid sizes are:{valid_sizes[mode][lvl]}"
+                    )
                     return
             except ValueError:
                 logger.warning("Invalid size value")
@@ -1233,7 +1595,9 @@ class MMUShell(MMUShellDefault):
             lvl = -1
 
         table_buff = self.machine.memory.get_data(addr, table_size)
-        invalids, pt_classes, table_obj = self.machine.mmu.parse_frame(table_buff, addr, table_size, lvl, mode=mode)
+        invalids, pt_classes, table_obj = self.machine.mmu.parse_frame(
+            table_buff, addr, table_size, lvl, mode=mode
+        )
         print(table_obj)
         print(f"Invalid entries: {invalids} Table levels: {pt_classes}")
 
@@ -1251,7 +1615,9 @@ class MMUShell(MMUShellDefault):
             self.data.ttbrs.clear()
 
         # Some table level was not found...
-        if not len(self.data.page_tables["kernel"][0]) and not len(self.data.page_tables["user"][0]):
+        if not len(self.data.page_tables["kernel"][0]) and not len(
+            self.data.page_tables["user"][0]
+        ):
             logger.warning("OOPS... no tables in first level... Wrong MMU mode?")
             return
 
@@ -1261,36 +1627,61 @@ class MMUShell(MMUShellDefault):
         # Collect opcodes
         opcode_classes = defaultdict(list)
         for opcode_addr, opcode_data in self.data.opcodes.items():
-            opcode_classes[(opcode_data["instruction"], opcode_data["register"])].append(opcode_addr)
+            opcode_classes[
+                (opcode_data["instruction"], opcode_data["register"])
+            ].append(opcode_addr)
 
         # Find all TTBR1_EL1 which contain interrupt related opcodes
         logging.info("Find TTBR1_EL1 candidates...")
-        int_opcode_addrs = opcode_classes[("MRS", "ESR_EL1")] + opcode_classes[("MRS", "FAR_EL1")] + opcode_classes[("MRS", "ELR_EL1")]
+        int_opcode_addrs = (
+            opcode_classes[("MRS", "ESR_EL1")]
+            + opcode_classes[("MRS", "FAR_EL1")]
+            + opcode_classes[("MRS", "ELR_EL1")]
+        )
         already_explored = set()
         for opcode_addr in int_opcode_addrs:
-
-            derived_addresses = self.machine.mmu.derive_page_address(opcode_addr, mode="kernel")
+            derived_addresses = self.machine.mmu.derive_page_address(
+                opcode_addr, mode="kernel"
+            )
             for derived_address in derived_addresses:
-
                 if derived_address in already_explored:
                     continue
 
                 lvl, addr = derived_address
-                ttbrs_candidates["kernel"].extend(self.radix_roots_from_data_page(lvl, addr, self.data.reverse_map_pages["kernel"], self.data.reverse_map_tables["kernel"]))
+                ttbrs_candidates["kernel"].extend(
+                    self.radix_roots_from_data_page(
+                        lvl,
+                        addr,
+                        self.data.reverse_map_pages["kernel"],
+                        self.data.reverse_map_tables["kernel"],
+                    )
+                )
                 already_explored.add(derived_address)
 
-        ttbrs_candidates["kernel"] = list(set(ttbrs_candidates["kernel"]).intersection(self.data.page_tables["kernel"][0].keys()))
+        ttbrs_candidates["kernel"] = list(
+            set(ttbrs_candidates["kernel"]).intersection(
+                self.data.page_tables["kernel"][0].keys()
+            )
+        )
 
         # Filter kernel candidates for ERET and write on MMU registers
         logger.info("Filtering TTBR1_EL1 candidates...")
-        mmu_w_opcode_addrs = opcode_classes[("MSR", "TCR_EL1")] + opcode_classes[("MSR", "TTBR0_EL1")]
+        mmu_w_opcode_addrs = (
+            opcode_classes[("MSR", "TCR_EL1")] + opcode_classes[("MSR", "TTBR0_EL1")]
+        )
         phy_cache = defaultdict(dict)
-        ttbrs_filtered = {"kernel":{}, "user":{}}
+        ttbrs_filtered = {"kernel": {}, "user": {}}
         virt_cache = defaultdict(dict)
         for candidate in tqdm(ttbrs_candidates["kernel"]):
-
             # Calculate physpace and discard empty ones
-            consistency, pas = self.physpace(candidate, self.data.page_tables["kernel"], self.data.empty_tables["kernel"], mode="kernel", hierarchical=True, cache=phy_cache)
+            consistency, pas = self.physpace(
+                candidate,
+                self.data.page_tables["kernel"],
+                self.data.empty_tables["kernel"],
+                mode="kernel",
+                hierarchical=True,
+                cache=phy_cache,
+            )
 
             # Discard inconsistent one
             if not consistency:
@@ -1318,8 +1709,17 @@ class MMUShell(MMUShellDefault):
             else:
                 continue
 
-            vas = self.virtspace(candidate, mode="kernel", hierarchical=True, cache=virt_cache)
-            radix_tree = RadixTree(candidate, trees_struct["kernel"]["total_levels"], pas, vas, kernel=True, user=False)
+            vas = self.virtspace(
+                candidate, mode="kernel", hierarchical=True, cache=virt_cache
+            )
+            radix_tree = RadixTree(
+                candidate,
+                trees_struct["kernel"]["total_levels"],
+                pas,
+                vas,
+                kernel=True,
+                user=False,
+            )
             ttbrs_filtered["kernel"][candidate] = radix_tree
 
         # Find all TTBR0_EL1 which contain at least one RET instruction
@@ -1327,25 +1727,42 @@ class MMUShell(MMUShellDefault):
         virt_cache.clear()
         logging.info("Find TTBR0_EL1 candidates...")
         for opcode_addr in opcode_classes[("RET", "")]:
-
-            derived_addresses = self.machine.mmu.derive_page_address(opcode_addr, mode="user")
+            derived_addresses = self.machine.mmu.derive_page_address(
+                opcode_addr, mode="user"
+            )
             for derived_address in derived_addresses:
-
                 if derived_address in already_explored:
                     continue
 
                 lvl, addr = derived_address
-                ttbrs_candidates["user"].extend(self.radix_roots_from_data_page(lvl, addr, self.data.reverse_map_pages["user"], self.data.reverse_map_tables["user"]))
+                ttbrs_candidates["user"].extend(
+                    self.radix_roots_from_data_page(
+                        lvl,
+                        addr,
+                        self.data.reverse_map_pages["user"],
+                        self.data.reverse_map_tables["user"],
+                    )
+                )
                 already_explored.add(derived_address)
 
-        ttbrs_candidates["user"] = list(set(ttbrs_candidates["user"]).intersection(self.data.page_tables["user"][0].keys()))
+        ttbrs_candidates["user"] = list(
+            set(ttbrs_candidates["user"]).intersection(
+                self.data.page_tables["user"][0].keys()
+            )
+        )
 
         logger.info("Filtering TTBR0_EL1 candidates...")
         phy_cache = defaultdict(dict)
         for candidate in tqdm(ttbrs_candidates["user"]):
-
             # Calculate physpace and discard empty ones
-            consistency, pas = self.physpace(candidate, self.data.page_tables["user"], self.data.empty_tables["user"], mode="user", hierarchical=True, cache=phy_cache)
+            consistency, pas = self.physpace(
+                candidate,
+                self.data.page_tables["user"],
+                self.data.empty_tables["user"],
+                mode="user",
+                hierarchical=True,
+                cache=phy_cache,
+            )
 
             # Discard inconsistent one
             if not consistency:
@@ -1365,8 +1782,17 @@ class MMUShell(MMUShellDefault):
             else:
                 continue
 
-            vas = self.virtspace(candidate, mode="user", hierarchical=True, cache=virt_cache)
-            radix_tree = RadixTree(candidate, trees_struct["user"]["total_levels"], pas, vas, kernel=False, user=True)
+            vas = self.virtspace(
+                candidate, mode="user", hierarchical=True, cache=virt_cache
+            )
+            radix_tree = RadixTree(
+                candidate,
+                trees_struct["user"]["total_levels"],
+                pas,
+                vas,
+                kernel=False,
+                user=True,
+            )
             ttbrs_filtered["user"][candidate] = radix_tree
 
         self.data.ttbrs = ttbrs_filtered
@@ -1378,14 +1804,23 @@ class MMUShell(MMUShellDefault):
             logging.info("Please, find them first!")
             return
 
-        labels = ["Radix address", "Total levels", "Kernel size (Bytes)", "User size (Bytes)", "Kernel"]
+        labels = [
+            "Radix address",
+            "Total levels",
+            "Kernel size (Bytes)",
+            "User size (Bytes)",
+            "Kernel",
+        ]
         table = PrettyTable()
         table.field_names = labels
         for mode in ["kernel", "user"]:
             for ttbr in self.data.ttbrs[mode].values():
-                table.add_row(ttbr.entry_resume_stringified() + ["X" if mode == "kernel" else ""])
-        table.sortby="Radix address"
+                table.add_row(
+                    ttbr.entry_resume_stringified() + ["X" if mode == "kernel" else ""]
+                )
+        table.sortby = "Radix address"
         print(table)
+
 
 class MMUShellGTruth(MMUShell):
     def do_show_registers_gtruth(self, args):
@@ -1402,25 +1837,29 @@ class MMUShellGTruth(MMUShell):
                     if value not in all_tcrs or (value_info[1] > all_tcrs[value][1]):
                         all_tcrs[value] = (value_info[0], value_info[1])
 
-
-        last_tcr = TCR_EL1(sorted(all_tcrs.keys(), key=lambda x: all_tcrs[x][1], reverse=True)[0])
+        last_tcr = TCR_EL1(
+            sorted(all_tcrs.keys(), key=lambda x: all_tcrs[x][1], reverse=True)[0]
+        )
 
         tcr_fields_equals = {}
         for value_found_obj in self.data.regs_values["TCR_EL1"]:
-            tcr_fields_equals[value_found_obj] = value_found_obj.count_fields_equals(last_tcr)
-        k_sorted = sorted(tcr_fields_equals.keys(), key=lambda x: tcr_fields_equals[x], reverse=True)
+            tcr_fields_equals[value_found_obj] = value_found_obj.count_fields_equals(
+                last_tcr
+            )
+        k_sorted = sorted(
+            tcr_fields_equals.keys(), key=lambda x: tcr_fields_equals[x], reverse=True
+        )
         if not k_sorted:
             print(f"Correct TCR_EL1 value: {last_tcr}")
             print("TCR_EL1 fields found:... 0/4")
-            print("FP: {}".format(str(len(self.data.regs_values["TCR_EL1"])) ))
+            print("FP: {}".format(str(len(self.data.regs_values["TCR_EL1"]))))
             return
         else:
             tcr_found = k_sorted[0]
             correct_fields_found = tcr_fields_equals[tcr_found]
             print(f"Correct TCR_EL1 value: {last_tcr}, Found: {tcr_found}")
             print("TCR_EL1 fields found:... {}/4".format(correct_fields_found))
-            print("FP: {}".format(str(len(self.data.regs_values["TCR_EL1"]) - 1) ))
-
+            print("FP: {}".format(str(len(self.data.regs_values["TCR_EL1"]) - 1)))
 
     def do_show_radix_trees_gtruth(self, args):
         """Compare radix trees found with the ground truth"""
@@ -1438,14 +1877,22 @@ class MMUShellGTruth(MMUShell):
         # Collect opcodes
         opcode_classes = defaultdict(list)
         for opcode_addr, opcode_data in self.data.opcodes.items():
-            opcode_classes[(opcode_data["instruction"], opcode_data["register"])].append(opcode_addr)
+            opcode_classes[
+                (opcode_data["instruction"], opcode_data["register"])
+            ].append(opcode_addr)
 
         # Kernel radix trees
         # Filtering using the same criteria used by the algorithm, however we test only candidates which are possible
         # False Negatives beacuse the interection must always pass the check!
-        mmu_w_opcode_addrs = opcode_classes[("MSR", "TCR_EL1")] + opcode_classes[("MSR", "TTBR0_EL1")] + opcode_classes[("MSR", "TTBR1_EL1")]
+        mmu_w_opcode_addrs = (
+            opcode_classes[("MSR", "TCR_EL1")]
+            + opcode_classes[("MSR", "TTBR0_EL1")]
+            + opcode_classes[("MSR", "TTBR1_EL1")]
+        )
 
-        kernel_radix_trees = False  # Some AArch64 machines do not have TTBR1_EL1 but only TTBR0_EL1
+        kernel_radix_trees = (
+            False  # Some AArch64 machines do not have TTBR1_EL1 but only TTBR0_EL1
+        )
         for key in ["TTBR1_EL1", "TTBR1_EL1_S"]:
             for value, data in tqdm(self.gtruth.get(key, {}).items()):
                 ttbr = TTBR1_EL1(value)
@@ -1469,42 +1916,54 @@ class MMUShellGTruth(MMUShell):
                 kernel_radix_trees = True
 
         if kernel_radix_trees:
-            tps = sorted(set(ttbr1s.keys()).intersection(set(self.data.ttbrs["kernel"].keys())))
-            fps = sorted(set(self.data.ttbrs["kernel"].keys()).difference(set(ttbr1s.keys())))
-            fns_candidates = set(ttbr1s.keys()).difference(set(self.data.ttbrs["kernel"].keys()))
+            tps = sorted(
+                set(ttbr1s.keys()).intersection(set(self.data.ttbrs["kernel"].keys()))
+            )
+            fps = sorted(
+                set(self.data.ttbrs["kernel"].keys()).difference(set(ttbr1s.keys()))
+            )
+            fns_candidates = set(ttbr1s.keys()).difference(
+                set(self.data.ttbrs["kernel"].keys())
+            )
 
             fns = []
             # Check False negatives
             for candidate in tqdm(fns_candidates):
-                    # Calculate physpace and discard empty ones
-                    consistency, pas = self.physpace(candidate, self.data.page_tables["kernel"], self.data.empty_tables["kernel"], mode="kernel", hierarchical=True, cache=ttbr1_phy_cache)
+                # Calculate physpace and discard empty ones
+                consistency, pas = self.physpace(
+                    candidate,
+                    self.data.page_tables["kernel"],
+                    self.data.empty_tables["kernel"],
+                    mode="kernel",
+                    hierarchical=True,
+                    cache=ttbr1_phy_cache,
+                )
 
-                    # Discard inconsistent one
-                    if not consistency:
-                        continue
+                # Discard inconsistent one
+                if not consistency:
+                    continue
 
-                    # Check if at least one ERET opcode in physical address space
-                    for opcode_addr in opcode_classes[("ERET", "")]:
-                        if pas.is_in_kernel_space(opcode_addr):
-                            break
-                    else:
-                        continue
+                # Check if at least one ERET opcode in physical address space
+                for opcode_addr in opcode_classes[("ERET", "")]:
+                    if pas.is_in_kernel_space(opcode_addr):
+                        break
+                else:
+                    continue
 
-                    # WARNING! We cannot filter for user_size = 0 due to TCR_EL1.E0PD1 !
-                    # Check if at least one MMU opcode in physical address space
-                    for opcode_addr in mmu_w_opcode_addrs:
-                        if pas.is_in_kernel_space(opcode_addr):
-                            break
-                    else:
-                        continue
+                # WARNING! We cannot filter for user_size = 0 due to TCR_EL1.E0PD1 !
+                # Check if at least one MMU opcode in physical address space
+                for opcode_addr in mmu_w_opcode_addrs:
+                    if pas.is_in_kernel_space(opcode_addr):
+                        break
+                else:
+                    continue
 
-                    fns.append(candidate)
+                fns.append(candidate)
             fns.sort()
 
         # User radix trees
         for key in ["TTBR0_EL1", "TTBR0_EL1_S"]:
             for value, data in tqdm(self.gtruth.get(key, {}).items()):
-
                 ttbr = TTBR0_EL1(value)
 
                 try:
@@ -1536,35 +1995,42 @@ class MMUShellGTruth(MMUShell):
         # Filter FN
         fnsu = []
         for candidate in tqdm(fnsu_candidates):
-                # Calculate physpace and discard empty ones
-                consistency, pas = self.physpace(candidate, self.data.page_tables["user"], self.data.empty_tables["user"], mode="user", hierarchical=True, cache=ttbr0_phy_cache)
+            # Calculate physpace and discard empty ones
+            consistency, pas = self.physpace(
+                candidate,
+                self.data.page_tables["user"],
+                self.data.empty_tables["user"],
+                mode="user",
+                hierarchical=True,
+                cache=ttbr0_phy_cache,
+            )
 
-                # Discard inconsistent one
-                if not consistency:
-                    continue
+            # Discard inconsistent one
+            if not consistency:
+                continue
 
-                # At least a page must be R or W in usermode
-                for perms in pas.space:
-                    if perms[3] or perms[4]:
-                        break
-                else:
-                    continue
+            # At least a page must be R or W in usermode
+            for perms in pas.space:
+                if perms[3] or perms[4]:
+                    break
+            else:
+                continue
 
-                # Check if at least one BLR opcode in physical address space
-                for opcode_addr in opcode_classes[("BLR", "")]:
-                    if opcode_addr in pas:
-                        break
-                else:
-                    continue
+            # Check if at least one BLR opcode in physical address space
+            for opcode_addr in opcode_classes[("BLR", "")]:
+                if opcode_addr in pas:
+                    break
+            else:
+                continue
 
-                # Check if at least one RET opcode in physical address space
-                for opcode_addr in opcode_classes[("RET", "")]:
-                    if opcode_addr in pas:
-                        break
-                else:
-                    continue
+            # Check if at least one RET opcode in physical address space
+            for opcode_addr in opcode_classes[("RET", "")]:
+                if opcode_addr in pas:
+                    break
+            else:
+                continue
 
-                fnsu.append(candidate)
+            fnsu.append(candidate)
         fnsu.sort()
 
         # Show results
@@ -1575,43 +2041,29 @@ class MMUShellGTruth(MMUShell):
         if kernel_radix_trees:
             umode = "U"
             for tp in sorted(tps):
-                table.add_row([hex(tp),
-                            "X",
-                            "K",
-                            kernel_regs[tp][1][0], kernel_regs[tp][1][1]])
+                table.add_row(
+                    [hex(tp), "X", "K", kernel_regs[tp][1][0], kernel_regs[tp][1][1]]
+                )
 
             for fn in sorted(fns):
-                table.add_row([hex(fn),
-                            "",
-                            "K",
-                            kernel_regs[fn][1][0], kernel_regs[fn][1][1]])
+                table.add_row(
+                    [hex(fn), "", "K", kernel_regs[fn][1][0], kernel_regs[fn][1][1]]
+                )
 
             for fp in sorted(fps):
-                table.add_row([hex(fp),
-                            "False positive",
-                            "K",
-                            "", ""])
+                table.add_row([hex(fp), "False positive", "K", "", ""])
         else:
             umode = "K"
 
         # User
         for tp in sorted(tpsu):
-            table.add_row([hex(tp),
-                        "X",
-                        umode,
-                        ttbr0s[tp][1][0], ttbr0s[tp][1][1]])
+            table.add_row([hex(tp), "X", umode, ttbr0s[tp][1][0], ttbr0s[tp][1][1]])
 
         for fn in sorted(fnsu):
-            table.add_row([hex(fn),
-                        "",
-                        umode,
-                        ttbr0s[fn][1][0], ttbr0s[fn][1][1]])
+            table.add_row([hex(fn), "", umode, ttbr0s[fn][1][0], ttbr0s[fn][1][1]])
 
         for fp in sorted(fpsu):
-            table.add_row([hex(fp),
-                        "False positive",
-                        umode,
-                        "", ""])
+            table.add_row([hex(fp), "False positive", umode, "", ""])
 
         print(table)
         if kernel_radix_trees:

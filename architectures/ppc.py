@@ -23,6 +23,7 @@ import portion
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class Data:
     is_mem_parsed: bool
@@ -35,7 +36,6 @@ class Data:
 class CPURegPPC(CPUReg):
     @classmethod
     def get_register_obj(cls, reg_name, value):
-
         # It exists multiple BAT registers
         if "BAT" in reg_name:
             if "U" in reg_name:
@@ -91,7 +91,10 @@ class BATU(CPURegPPC):
 
 class BATL(CPURegPPC):
     def is_valid(self, value):
-        return CPU.extract_bits(value, 15, 10) == 0x0 and CPU.extract_bits(value, 29, 1) == 0
+        return (
+            CPU.extract_bits(value, 15, 10) == 0x0
+            and CPU.extract_bits(value, 29, 1) == 0
+        )
 
     def __init__(self, value, name):
         self.bat_name = name
@@ -112,9 +115,19 @@ class BATL(CPURegPPC):
     def __hash__(self):
         return hash((self.value, self.bat_name))
 
+
 class PTE32:
     entry_name = "PTE32"
-    labels = ["Address:", "VSID:", "RPN:", "API:" "Secondary hash:", "Referenced:", "Changed:", "WIMG:", "PP:"]
+    labels = [
+        "Address:",
+        "VSID:",
+        "RPN:",
+        "API:" "Secondary hash:",
+        "Referenced:",
+        "Changed:",
+        "WIMG:",
+        "PP:",
+    ]
     size = 4
     addr_fmt = "0x{:08x}"
 
@@ -134,19 +147,22 @@ class PTE32:
 
     def __repr__(self):
         e_resume = self.entry_resume_stringified()
-        return str([self.labels[i] + " " + str(e_resume[i]) for i in range(len(self.labels))])
+        return str(
+            [self.labels[i] + " " + str(e_resume[i]) for i in range(len(self.labels))]
+        )
 
     def entry_resume(self):
-        return [self.address,
-                hex(self.vsid),
-                hex(self.rpn),
-                hex(self.api),
-                bool(self.h),
-                bool(self.r),
-                bool(self.c),
-                bin(self.wimg),
-                hex(self.pp)
-                ]
+        return [
+            self.address,
+            hex(self.vsid),
+            hex(self.rpn),
+            hex(self.api),
+            bool(self.h),
+            bool(self.r),
+            bool(self.c),
+            bin(self.wimg),
+            hex(self.pp),
+        ]
 
     def entry_resume_stringified(self):
         res = self.entry_resume()
@@ -162,7 +178,17 @@ class HashTable:
         self.size = size
         self.ptegs = ptegs
 
-    table_fields = ["Entry address", "VSID", "RPN", "API", "Secondary hash","Referenced", "Changed", "WIMG", "PP"]
+    table_fields = [
+        "Entry address",
+        "VSID",
+        "RPN",
+        "API",
+        "Secondary hash",
+        "Referenced",
+        "Changed",
+        "WIMG",
+        "PP",
+    ]
     addr_fmt = "0x{:08x}"
 
     def __repr__(self):
@@ -175,12 +201,13 @@ class HashTable:
                 entry_resume[0] = self.addr_fmt.format(entry_resume[0])
                 table.add_row(entry_resume)
 
-        table.sortby="Entry address"
+        table.sortby = "Entry address"
         return str(table)
 
 
 class PhysicalMemory(PhysicalMemoryDefault):
     pass
+
 
 class CPU(CPUDefault):
     @classmethod
@@ -209,35 +236,72 @@ class CPUPPC32(CPU):
     def __init__(self, features):
         super(CPUPPC32, self).__init__(features)
         self.processor_features["opcode_to_mmu_regs"] = {
-            0: "SR0", 1: "SR1", 2: "SR2", 3: "SR3", 4: "SR4", 5: "SR5", 6: "SR6",
-            7: "SR7", 8: "SR8", 9: "SR9", 10: "SR10", 11: "SR11", 12: "SR12",13: "SR13", 14: "SR14", 15: "SR15",
-            25: "SDR1", 528: "IBAT0U", 529: "IBAT0L", 530: "IBAT1U", 531: "IBAT1L", 532: "IBAT2U", 533: "IBAT2L",
-            534: "IBAT3U", 535: "IBAT3L", 536: "DBAT0U", 537: "DBAT0L", 538: "DBAT1U", 539: "DBAT1L", 540: "DBAT2U",
-            541: "DBAT2L", 542: "DBAT3U", 543: "DBAT3L",
+            0: "SR0",
+            1: "SR1",
+            2: "SR2",
+            3: "SR3",
+            4: "SR4",
+            5: "SR5",
+            6: "SR6",
+            7: "SR7",
+            8: "SR8",
+            9: "SR9",
+            10: "SR10",
+            11: "SR11",
+            12: "SR12",
+            13: "SR13",
+            14: "SR14",
+            15: "SR15",
+            25: "SDR1",
+            528: "IBAT0U",
+            529: "IBAT0L",
+            530: "IBAT1U",
+            531: "IBAT1L",
+            532: "IBAT2U",
+            533: "IBAT2L",
+            534: "IBAT3U",
+            535: "IBAT3L",
+            536: "DBAT0U",
+            537: "DBAT0L",
+            538: "DBAT1U",
+            539: "DBAT1L",
+            540: "DBAT2U",
+            541: "DBAT2L",
+            542: "DBAT3U",
+            543: "DBAT3L",
         }
 
-        self.processor_features["opcode_to_gregs"] = ["R{}".format(str(i)) for i in range(32)]
+        self.processor_features["opcode_to_gregs"] = [
+            "R{}".format(str(i)) for i in range(32)
+        ]
         CPU.processor_features = self.processor_features
         CPU.registers_values = self.registers_values
 
     def parse_opcode(self, instr, page_addr, offset):
         # Exclude all possible instructions which are not compatible with MTSPR, MTSR, MTSRIN
-        if CPUPPC32.extract_bits(instr, 31, 1) != 0 or CPUPPC32.extract_bits(instr, 0, 6) != 31:
+        if (
+            CPUPPC32.extract_bits(instr, 31, 1) != 0
+            or CPUPPC32.extract_bits(instr, 0, 6) != 31
+        ):
             return {}
 
         # Look for MTSPR (SDR1 and BATs)
         if CPUPPC32.extract_bits(instr, 21, 10) == 467:
-            spr = (CPUPPC32.extract_bits(instr, 16, 5) << 5) + CPUPPC32.extract_bits(instr, 11, 5)
+            spr = (CPUPPC32.extract_bits(instr, 16, 5) << 5) + CPUPPC32.extract_bits(
+                instr, 11, 5
+            )
             if spr == 25 or 528 <= spr <= 543:
                 gr = CPUPPC32.extract_bits(instr, 6, 5)
                 addr = page_addr + offset
-                return {addr:  {"register": self.processor_features["opcode_to_mmu_regs"][spr],
-                                "gpr": [self.processor_features["opcode_to_gregs"][gr]],
-                                "f_addr": -1,
-                                "f_parents": set(),
-                                "instruction": "MTSPR"
-                                }
-                        }
+                return {
+                    addr: {
+                        "register": self.processor_features["opcode_to_mmu_regs"][spr],
+                        "gpr": [self.processor_features["opcode_to_gregs"][gr]],
+                        "f_addr": -1,
+                        "f_parents": set(),
+                        "instruction": "MTSPR",
+                    }
+                }
         return {}
 
     def identify_functions_start(self, addreses):
@@ -248,7 +312,7 @@ class CPUPPC32(CPU):
         mdis.dontdis_retcall = False
         instr_len = self.processor_features["instr_len"]
 
-        logger = logging.getLogger('asmblock')
+        logger = logging.getLogger("asmblock")
         logger.disabled = True
 
         for addr in tqdm(addreses):
@@ -259,16 +323,28 @@ class CPUPPC32(CPU):
             # Maximum 10000 instructions
             instructions = 0
             while True and instructions <= 10000:
-
                 # Stop if found an invalid instruction
                 try:
                     asmcode = mdis.dis_instr(cur_addr)
 
                     # RET: BLR, BLRL, BCTRL
                     # JMP: B, BA, BCTR
-                    if asmcode.name in ["BA", "BCTR", "BLR", "BLRL", "BCTRL", "BL",
-                                        "BLA", "BCA", "BCL", "BCLA", "BCLR",
-                                        "BCLRL", "BCCTR", "BCCTRL"]:
+                    if asmcode.name in [
+                        "BA",
+                        "BCTR",
+                        "BLR",
+                        "BLRL",
+                        "BCTRL",
+                        "BL",
+                        "BLA",
+                        "BCA",
+                        "BCL",
+                        "BCLA",
+                        "BCLR",
+                        "BCLRL",
+                        "BCCTR",
+                        "BCCTRL",
+                    ]:
                         cur_addr += instr_len
                         break
 
@@ -288,13 +364,18 @@ class CPUPPC32(CPU):
                 addreses[addr]["f_addr"] = cur_addr
         del vm
 
+
 class Machine(MachineDefault):
     def get_miasm_machine(self):
-        mn_s = "ppc" + str(self.cpu.bits) + ("b" if self.cpu.endianness == "big" else "l")
+        mn_s = (
+            "ppc" + str(self.cpu.bits) + ("b" if self.cpu.endianness == "big" else "l")
+        )
         return MIASMMachine(mn_s)
+
 
 class MMU(MMUDefault):
     pass
+
 
 class PPC32(MMU):
     PAGE_SIZE = 4096
@@ -313,7 +394,7 @@ class PPC32(MMU):
 
     def parse_htable_opcodes_parallel(self, addresses, frame_size, pidx, **kwargs):
         # Parse hash tables fragments and opcodes at the same time
-        sleep(uniform(pidx, pidx+1) // 1000)
+        sleep(uniform(pidx, pidx + 1) // 1000)
 
         opcodes = {}
         mm = copy(self.machine.memory)
@@ -334,16 +415,24 @@ class PPC32(MMU):
                 fragments.append(frame_obj)
 
             # Parse opcodes
-            for idx, opcode in enumerate(iter_unpack(self.machine.cpu.processor_features["opcode_unpack_fmt"], frame_buf)):
+            for idx, opcode in enumerate(
+                iter_unpack(
+                    self.machine.cpu.processor_features["opcode_unpack_fmt"], frame_buf
+                )
+            ):
                 opcode = opcode[0]
                 offset = idx * instr_len
-                opcodes.update(self.machine.cpu.parse_opcode(opcode, frame_addr, offset))
+                opcodes.update(
+                    self.machine.cpu.parse_opcode(opcode, frame_addr, offset)
+                )
 
         return fragments, opcodes
 
     def collect_htable_framents_opcodes(self):
         logger.info("Look for hash tables fragments and opcodes...")
-        parallel_results = self.machine.apply_parallel(self.machine.mmu.HTABLE_MIN_SIZE, self.parse_htable_opcodes_parallel)
+        parallel_results = self.machine.apply_parallel(
+            self.machine.mmu.HTABLE_MIN_SIZE, self.parse_htable_opcodes_parallel
+        )
 
         opcodes = {}
         htables = defaultdict(list)
@@ -369,16 +458,17 @@ class PPC32(MMU):
                 return None
 
             # No duplicates allowed in a PTEG
-            pteg_addr = (frame_addr + entry_idx * 8) - ((frame_addr + entry_idx * 8) % 64)
+            pteg_addr = (frame_addr + entry_idx * 8) - (
+                (frame_addr + entry_idx * 8) % 64
+            )
             if pteg_addr in ptegs and entry_obj in ptegs[pteg_addr]:
-                    return None
+                return None
 
             ptegs[pteg_addr].add(entry_obj)
 
         return HashTable(frame_addr, frame_size, ptegs)
 
     def classify_htable_entry(self, entry, entry_addr):
-
         # If BIT 0 Word 0 = 0 is EMPTY
         if not PPC32.extract_bits(entry[0], 0, 1):
             return False
@@ -420,8 +510,9 @@ class PPC32(MMU):
         low_frames = htables[1 << self.HTABLE_MIN_BIT_SIZE]
 
         # Starting from fragments with lower size, check if it is possible to form bigger ones aggregating two halves
-        for i in tqdm(range(self.HTABLE_MIN_BIT_SIZE + 1, self.HTABLE_MAX_BIT_SIZE + 1)):
-
+        for i in tqdm(
+            range(self.HTABLE_MIN_BIT_SIZE + 1, self.HTABLE_MAX_BIT_SIZE + 1)
+        ):
             htable_size = 1 << i
             low_frames_size = 1 << (i - 1)
 
@@ -430,15 +521,20 @@ class PPC32(MMU):
                     continue
 
                 # Check if the other half is present and aggregate them
-                if htables[low_frames_size][htable_idx + 1].address == htable.address + low_frames_size:
+                if (
+                    htables[low_frames_size][htable_idx + 1].address
+                    == htable.address + low_frames_size
+                ):
                     nxt_htable = htables[low_frames_size][htable_idx + 1]
 
                     pteg_c = deepcopy(htable.ptegs)
                     pteg_c.update(nxt_htable.ptegs)
 
-                    htables[htable_size].append(HashTable(address=htable.address,
-                                                               size=htable_size,
-                                                               ptegs=pteg_c))
+                    htables[htable_size].append(
+                        HashTable(
+                            address=htable.address, size=htable_size, ptegs=pteg_c
+                        )
+                    )
 
             htables[htable_size].sort(key=lambda x: x.address)
             if htables[htable_size]:
@@ -458,14 +554,13 @@ class PPC32(MMU):
 
     def filter_htables(self, htables):
         logging.info("Filtering...")
-        final_candidates = defaultdict(list) #deepcopy(htables)
+        final_candidates = defaultdict(list)  # deepcopy(htables)
         already_visited = portion.empty()
         entropies = []
 
         # Start from table of big size
         for table_size in reversed(list(htables.keys())):
             for table_obj in tqdm(htables[table_size]):
-
                 # If a valid bigger table contains the little one remove the little one
                 if table_obj.address in already_visited:
                     continue
@@ -486,7 +581,9 @@ class PPC32(MMU):
                             total_rpn += 1
 
                             # If the hash validation fails for some PTE discard the table
-                            if not self.validate_entry_by_hash(pte, table_obj.address, table_obj.size, pte.address):
+                            if not self.validate_entry_by_hash(
+                                pte, table_obj.address, table_obj.size, pte.address
+                            ):
                                 raise UserWarning
                 except UserWarning:
                     continue
@@ -504,10 +601,12 @@ class PPC32(MMU):
                 # Calculate RPN entropy starting from RPN probabilities for the table
                 table_entropy = 0
                 for rpn_count in rpn_probabilities.values():
-                    table_entropy -= rpn_count/total_rpn * log2(rpn_count/total_rpn)
+                    table_entropy -= rpn_count / total_rpn * log2(rpn_count / total_rpn)
                 entropies.append([table_size, table_obj, table_entropy])
 
-                already_visited |= (portion.closedopen(table_obj.address, table_obj.address + table_obj.size))
+                already_visited |= portion.closedopen(
+                    table_obj.address, table_obj.address + table_obj.size
+                )
                 final_candidates[table_size].append(table_obj)
 
         # HEURISTIC: Filter for RPN entropy: cut-off at 80% of the maximum entropy,
@@ -520,8 +619,9 @@ class PPC32(MMU):
 
         return final_candidates
 
-    def validate_entry_by_hash(self, entry_obj, htable_addr, htable_size, pteg_addr_entry):
-
+    def validate_entry_by_hash(
+        self, entry_obj, htable_addr, htable_size, pteg_addr_entry
+    ):
         # We have only a part of the page index (9 bit)
         vsid_reduced = CPUPPC32.extract_bits_little(entry_obj.vsid, 10, 9)
 
@@ -545,16 +645,17 @@ class PPC32(MMU):
 
 
 class MMUShell(MMUShellDefault):
-    def __init__(self, completekey='tab', stdin=None, stdout=None, machine={}):
+    def __init__(self, completekey="tab", stdin=None, stdout=None, machine={}):
         super(MMUShell, self).__init__(completekey, stdin, stdout, machine)
 
         if not self.data:
-            self.data = Data(is_mem_parsed = False,
-                             is_registers_found = False,
-                             opcodes = {},
-                             regs_values = {},
-                             htables = {}
-                            )
+            self.data = Data(
+                is_mem_parsed=False,
+                is_registers_found=False,
+                opcodes={},
+                regs_values={},
+                htables={},
+            )
 
     def do_parse_memory(self, args):
         """Parse memory to find opcode MMU related and hash tables"""
@@ -567,7 +668,10 @@ class MMUShell(MMUShellDefault):
 
     def parse_memory(self):
         # Collect opcodes and hash table of the minium size
-        fragments, self.data.opcodes = self.machine.mmu.collect_htable_framents_opcodes()
+        (
+            fragments,
+            self.data.opcodes,
+        ) = self.machine.mmu.collect_htable_framents_opcodes()
 
         # Glue hash table
         htables = self.machine.mmu.glue_htable_fragments(fragments)
@@ -608,7 +712,9 @@ class MMUShell(MMUShellDefault):
         logging.info("Identify register values using data flow analysis...")
 
         # We use data flow analysis and merge the results
-        dataflow_values = self.machine.cpu.find_registers_values_dataflow(self.data.opcodes, zero_registers=["ZERO"])
+        dataflow_values = self.machine.cpu.find_registers_values_dataflow(
+            self.data.opcodes, zero_registers=["ZERO"]
+        )
 
         filtered_values = defaultdict(set)
         for register, values in dataflow_values.items():
@@ -619,11 +725,18 @@ class MMUShell(MMUShellDefault):
 
         # Add default values
         for register, value in self.machine.cpu.registers_values.items():
-            if register not in self.machine.cpu.processor_features["opcode_to_mmu_regs"].values():
+            if (
+                register
+                not in self.machine.cpu.processor_features[
+                    "opcode_to_mmu_regs"
+                ].values()
+            ):
                 continue
 
             reg_obj = CPURegPPC.get_register_obj(register, value)
-            if reg_obj.valid and all([not reg_obj.is_mmu_equivalent_to(x) for x in filtered_values[register]]):
+            if reg_obj.valid and all(
+                [not reg_obj.is_mmu_equivalent_to(x) for x in filtered_values[register]]
+            ):
                 filtered_values[register].add(reg_obj)
 
         self.data.regs_values = filtered_values
@@ -640,8 +753,8 @@ class MMUShell(MMUShellDefault):
                 print(register)
 
     def do_show_hashtable(self, arg):
-        'Parse a Hash Table of a given size'
-        'Usage: show_hashtable ADDRESS size'
+        "Parse a Hash Table of a given size"
+        "Usage: show_hashtable ADDRESS size"
 
         arg = arg.split()
         if len(arg) < 2:
@@ -663,7 +776,18 @@ class MMUShell(MMUShellDefault):
             logging.error("Address not in memory address space")
             return
 
-        valid_sizes = [65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608, 16777216, 33554432]
+        valid_sizes = [
+            65536,
+            131072,
+            262144,
+            524288,
+            1048576,
+            2097152,
+            4194304,
+            8388608,
+            16777216,
+            33554432,
+        ]
         if size not in valid_sizes:
             logging.error(f"Invalid order table. Valid sizes are {valid_sizes}")
             return
@@ -675,8 +799,8 @@ class MMUShell(MMUShellDefault):
         else:
             print(table)
 
-class MMUShellGTruth(MMUShell):
 
+class MMUShellGTruth(MMUShell):
     def do_show_hashtables_gtruth(self, args):
         """Show hash tables found and compare them with the ground truth"""
         if not self.data.is_mem_parsed:
@@ -684,7 +808,14 @@ class MMUShellGTruth(MMUShell):
             return
 
         table = PrettyTable()
-        table.field_names = ["Address", "Size", "Found", "Correct size", "First seen", "Last seen"]
+        table.field_names = [
+            "Address",
+            "Size",
+            "Found",
+            "Correct size",
+            "First seen",
+            "Last seen",
+        ]
 
         # Collect valid true table
         valids = {}
@@ -692,17 +823,42 @@ class MMUShellGTruth(MMUShell):
             sdr1_obj = SDR1(sdr1_value)
             if not sdr1_obj.valid:
                 continue
-            valids[sdr1_obj.address] = [sdr1_obj.size, sdr1_data["first_seen"], sdr1_data["last_seen"]]
+            valids[sdr1_obj.address] = [
+                sdr1_obj.size,
+                sdr1_data["first_seen"],
+                sdr1_data["last_seen"],
+            ]
 
         # MMUShell found values
         found = {}
         for size in self.data.htables:
             for table_obj in self.data.htables[size]:
-                found[table_obj.address] = [table_obj.size, "False positive", "False positive"]
+                found[table_obj.address] = [
+                    table_obj.size,
+                    "False positive",
+                    "False positive",
+                ]
 
         already_visited = set()
         for k, v in valids.items():
-            table.add_row([hex(k), hex(v[0]), "X" if k in found else "", "X" if v[0] == found.get(k, [None,])[0] else "", v[1], v[2]])
+            table.add_row(
+                [
+                    hex(k),
+                    hex(v[0]),
+                    "X" if k in found else "",
+                    "X"
+                    if v[0]
+                    == found.get(
+                        k,
+                        [
+                            None,
+                        ],
+                    )[0]
+                    else "",
+                    v[1],
+                    v[2],
+                ]
+            )
             already_visited.add((k, v[0]))
 
         fps = 0
@@ -715,7 +871,6 @@ class MMUShellGTruth(MMUShell):
         print(table)
         print(f"FP: {fps}")
 
-
     def do_show_registers_gtruth(self, args):
         """Show registers value retrieved and compare with the ground truth"""
         if not self.data.is_registers_found:
@@ -723,19 +878,41 @@ class MMUShellGTruth(MMUShell):
             return
 
         # Check if the last value of SDR1 was found
-        last_sdr1 =  SDR1(sorted(self.gtruth["SDR1"].keys(), key=lambda x: self.gtruth["SDR1"][x]["last_seen"], reverse=True)[0])
+        last_sdr1 = SDR1(
+            sorted(
+                self.gtruth["SDR1"].keys(),
+                key=lambda x: self.gtruth["SDR1"][x]["last_seen"],
+                reverse=True,
+            )[0]
+        )
         print(f"Correct SDR1 value: {last_sdr1}")
-        print("SDR1 correct value... {}FOUND".format("" if last_sdr1 in self.data.regs_values["SDR1"] else "NOT "))
+        print(
+            "SDR1 correct value... {}FOUND".format(
+                "" if last_sdr1 in self.data.regs_values["SDR1"] else "NOT "
+            )
+        )
 
         # Found last BAT registers used by the system
         bats_found = {}
         for t in ["I", "D"]:
             for i in range(4):
                 reg_name = t + "BAT" + str(i)
-                batu_v, batl_v = sorted(self.gtruth[reg_name].keys(), key=lambda x: self.gtruth[reg_name][x][1], reverse=True)[0]
+                batu_v, batl_v = sorted(
+                    self.gtruth[reg_name].keys(),
+                    key=lambda x: self.gtruth[reg_name][x][1],
+                    reverse=True,
+                )[0]
                 bats_found[reg_name + "U"] = BATU(batu_v, reg_name + "U")
                 bats_found[reg_name + "L"] = BATL(batl_v, reg_name + "L")
 
         # Check if values are found
         for reg_name in bats_found:
-            print("{} correct value... {}FOUND\t\t{}".format(reg_name, "" if bats_found[reg_name] in self.data.regs_values[reg_name] else "NOT ", bats_found[reg_name]))
+            print(
+                "{} correct value... {}FOUND\t\t{}".format(
+                    reg_name,
+                    ""
+                    if bats_found[reg_name] in self.data.regs_values[reg_name]
+                    else "NOT ",
+                    bats_found[reg_name],
+                )
+            )

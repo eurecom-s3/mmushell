@@ -36,11 +36,12 @@ import os
 
 logger = logging.getLogger(__name__)
 
+
 # Disable print() from MIASM
 class DisableLogs:
     def __enter__(self):
         self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, 'w')
+        sys.stdout = open(os.devnull, "w")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         sys.stdout.close()
@@ -69,6 +70,7 @@ class TableEntry:
 
 class PageTable:
     entry_size = 0
+
     def __init__(self, address, size, entries, levels, *args):
         self.address = address
         self.size = size
@@ -81,8 +83,9 @@ class PageTable:
             res.append(f(entry, args))
         return res
 
+
 def perms_bool_to_string(kr, kw, kx, r, w, x):
-    perm_s =  "R" if kr else "-"
+    perm_s = "R" if kr else "-"
     perm_s += "W" if kw else "-"
     perm_s += "X" if kx else "-"
     perm_s += "r" if r else "-"
@@ -90,9 +93,16 @@ def perms_bool_to_string(kr, kw, kx, r, w, x):
     perm_s += "x" if x else "-"
     return perm_s
 
+
 class RadixTree:
-    labels = ["Radix address", "First level", "Kernel size (Bytes)", "User size (Bytes)"]
+    labels = [
+        "Radix address",
+        "First level",
+        "Kernel size (Bytes)",
+        "User size (Bytes)",
+    ]
     addr_fmt = "0x{:016x}"
+
     def __init__(self, top_table, init_level, pas, vas, kernel=True, user=True):
         self.top_table = top_table
         self.init_level = init_level
@@ -103,14 +113,17 @@ class RadixTree:
 
     def __repr__(self):
         e_resume = self.entry_resume_stringified()
-        return str([self.labels[i] + ": " + str(e_resume[i]) for i in range(len(self.labels))])
+        return str(
+            [self.labels[i] + ": " + str(e_resume[i]) for i in range(len(self.labels))]
+        )
 
     def entry_resume(self):
-        return [self.top_table,
-                self.init_level,
-                self.pas.get_kernel_size(),
-                self.pas.get_user_size()
-                ]
+        return [
+            self.top_table,
+            self.init_level,
+            self.pas.get_kernel_size(),
+            self.pas.get_user_size(),
+        ]
 
     def entry_resume_stringified(self):
         res = self.entry_resume()
@@ -118,6 +131,7 @@ class RadixTree:
         for idx, r in enumerate(res[1:], start=1):
             res[idx] = str(r)
         return res
+
 
 class VAS(defaultdict):
     def __init__(self, *args, **kwargs):
@@ -181,7 +195,7 @@ class PAS:
 
     def is_in_user_space(self, key):
         for perms, addresses in self.space.items():
-            if not(perms[0] or perms[1] or perms[2]):
+            if not (perms[0] or perms[1] or perms[2]):
                 for address in addresses:
                     if address <= key < address + addresses[address]:
                         return True
@@ -190,14 +204,22 @@ class PAS:
     def __repr__(self):
         ret = ""
         for perm in self.space:
-            symb = lambda x,s: s if x else "-"
-            ret += "{}{}{} {}{}{}: {}\n".format(symb(perm[0], "R"),symb(perm[1], "W"),symb(perm[2], "X"),symb(perm[3], "R"),symb(perm[4], "W"),symb(perm[5], "X"), self.space_size[perm])
+            symb = lambda x, s: s if x else "-"
+            ret += "{}{}{} {}{}{}: {}\n".format(
+                symb(perm[0], "R"),
+                symb(perm[1], "W"),
+                symb(perm[2], "X"),
+                symb(perm[3], "R"),
+                symb(perm[4], "W"),
+                symb(perm[5], "X"),
+                self.space_size[perm],
+            )
         return ret
 
     def get_kernel_size(self):
         size = 0
         for perm in self.space:
-            if not(perm[3] or perm[4] or perm[5]):
+            if not (perm[3] or perm[4] or perm[5]):
                 size += self.space_size[perm]
         return size
 
@@ -207,6 +229,7 @@ class PAS:
             if perm[3] or perm[4] or perm[5]:
                 size += self.space_size[perm]
         return size
+
 
 class Machine:
     @classmethod
@@ -223,14 +246,18 @@ class Machine:
             ram_portion = ram_portion.union(region_portion)
 
         # Module to use
-        architecture_module = importlib.import_module("architectures." + machine_config["cpu"]["architecture"])
+        architecture_module = importlib.import_module(
+            "architectures." + machine_config["cpu"]["architecture"]
+        )
 
         # Create CPU
         cpu = architecture_module.CPU.from_cpu_config(machine_config["cpu"])
 
         # Create MMU
         try:
-            mmu_class = getattr(architecture_module, machine_config["mmu"]["mode"].upper())
+            mmu_class = getattr(
+                architecture_module, machine_config["mmu"]["mode"].upper()
+            )
         except AttributeError:
             logger.fatal("Unknown MMU mode!")
             exit(1)
@@ -257,7 +284,9 @@ class Machine:
     def __del__(self):
         self.memory.close()
 
-    def apply_parallel(self, frame_size, parallel_func, iterators=None, max_address=-1, **kwargs):
+    def apply_parallel(
+        self, frame_size, parallel_func, iterators=None, max_address=-1, **kwargs
+    ):
         """Apply parallel_func using multiple core to frame_size chunks of RAM or iterators arguments"""
 
         # Prepare the pool
@@ -267,20 +296,26 @@ class Machine:
 
         if iterators is None:
             # Create iterators for parallel execution
-            _, addresses_iterators = self.memory.get_addresses(frame_size, cpus=cpus, max_address=max_address)
+            _, addresses_iterators = self.memory.get_addresses(
+                frame_size, cpus=cpus, max_address=max_address
+            )
         else:
             addresses_iterators = iterators
 
         # GO!
-        parsing_results_async = [pool.apply_async(parallel_func,
-                                 args=(addresses_iterator, frame_size, pidx), kwds=kwargs)
-                                 for pidx, addresses_iterator in enumerate(addresses_iterators)]
+        parsing_results_async = [
+            pool.apply_async(
+                parallel_func, args=(addresses_iterator, frame_size, pidx), kwds=kwargs
+            )
+            for pidx, addresses_iterator in enumerate(addresses_iterators)
+        ]
         pool.close()
         pool.join()
 
-        print("\n") # Workaround for tqdm
+        print("\n")  # Workaround for tqdm
 
         return parsing_results_async
+
 
 class CPU:
     opcode_to_mmu_regs = None
@@ -291,6 +326,7 @@ class CPU:
         return CPU(cpu_config)
 
     machine = None
+
     def __init__(self, params):
         self.architecture = params["architecture"]
         self.bits = params["bits"]
@@ -314,7 +350,7 @@ class CPU:
         raise NotImplementedError
 
     def parse_opcodes_parallel(self, addresses, frame_size, pidx, **kwargs):
-        sleep(uniform(pidx, pidx+1) // 1000)
+        sleep(uniform(pidx, pidx + 1) // 1000)
 
         opcodes = {}
         mm = copy(self.machine.memory)
@@ -322,12 +358,22 @@ class CPU:
 
         # Cicle over every frame
         total_elems, iterator = addresses
-        for frame_addr in tqdm(iterator, position=-pidx, total=total_elems, leave=False):
-            frame_buf = mm.get_data(frame_addr, frame_size) # We parse memory in PAGE_SIZE chunks
+        for frame_addr in tqdm(
+            iterator, position=-pidx, total=total_elems, leave=False
+        ):
+            frame_buf = mm.get_data(
+                frame_addr, frame_size
+            )  # We parse memory in PAGE_SIZE chunks
 
-            for idx, opcode in enumerate(iter_unpack(self.processor_features["opcode_unpack_fmt"], frame_buf)):
+            for idx, opcode in enumerate(
+                iter_unpack(self.processor_features["opcode_unpack_fmt"], frame_buf)
+            ):
                 opcode = opcode[0]
-                opcodes.update(self.parse_opcode(opcode, frame_addr, idx * self.processor_features["instr_len"]))
+                opcodes.update(
+                    self.parse_opcode(
+                        opcode, frame_addr, idx * self.processor_features["instr_len"]
+                    )
+                )
 
         return opcodes
 
@@ -336,18 +382,21 @@ class CPU:
         # memory layer during the Python translation
         # WORKAROUND: memory() does not permit more than 2 args...
         endianness = self.endianness
+
         def memory(addr, size):
             return int.from_bytes(self.machine.memory.get_data(addr, size), endianness)
 
         machine = self.machine.get_miasm_machine()
         vm = self.machine.memory.get_miasm_vmmngr()
-        mdis = machine.dis_engine(bin_stream_vm(vm), dont_dis_nulstart_bloc=False, loc_db=LocationDB())
+        mdis = machine.dis_engine(
+            bin_stream_vm(vm), dont_dis_nulstart_bloc=False, loc_db=LocationDB()
+        )
 
         ir_arch = machine.ira(mdis.loc_db)
         py_transl = TranslatorPython()
 
         # Disable MIASM logging
-        logging.getLogger('asmblock').disabled = True
+        logging.getLogger("asmblock").disabled = True
 
         registers_values = defaultdict(set)
         # We use a stack data structure (deque) in order to manage also parent functions (EXPERIMENTAL not implemented here)
@@ -398,12 +447,16 @@ class CPU:
             # Recreate default CPU config registers state and general registers to look for
             bits = self.bits
             gp_registers = [ExprId(reg, bits) for reg in instr_data["gpr"]]
-            init_ctx = {ExprId(name.upper(), bits): ExprInt(value, bits) for name, value in self.registers_values.items()}
+            init_ctx = {
+                ExprId(name.upper(), bits): ExprInt(value, bits)
+                for name, value in self.registers_values.items()
+            }
 
             # Generate solutions
             loops = 0
-            for sol_nb, sol in enumerate(dg.get(current_block.loc_key, gp_registers, assignblk_index, set())):
-
+            for sol_nb, sol in enumerate(
+                dg.get(current_block.loc_key, gp_registers, assignblk_index, set())
+            ):
                 # The solution contains a loop, we permit only a maximum of 10 solutions with loops...
                 if sol.has_loop:
                     loops += 1
@@ -444,8 +497,10 @@ class CPU:
         self.machine.memory.free_miasm_memory()
         return registers_values
 
+
 class MMU:
     machine = None
+
     def __init__(self, mmu_config):
         self.mmu_config = mmu_config
 
@@ -460,6 +515,7 @@ class MMU:
     @staticmethod
     def extract_bits_big64(entry, pos, n):
         return (entry >> (64 - pos - n)) & ((1 << n) - 1)
+
 
 class MMURadix(MMU):
     PAGE_SIZE = 0
@@ -481,17 +537,18 @@ class MMURadix(MMU):
     def derive_page_address(self, addr, mode="global"):
         # Derive the addresses of pages containing the address
         addrs = []
-        for lvl in range(self.radix_levels[mode] - 1 , -1, -1):
+        for lvl in range(self.radix_levels[mode] - 1, -1, -1):
             for entry_class in self.map_datapages_entries_to_levels[mode][lvl]:
                 if entry_class is not None:
                     shift = self.map_entries_to_shifts[mode][entry_class]
                     addrs.append((lvl, (addr >> shift) << shift))
         return addrs
 
-    def parse_parallel_frame(self, addresses, frame_size, pidx, mode="global", **kwargs):
-
+    def parse_parallel_frame(
+        self, addresses, frame_size, pidx, mode="global", **kwargs
+    ):
         # Every process sleep a random delay in order to desincronize access to disk and maximixe the throuput
-        sleep(uniform(pidx, pidx+1) // 1000)
+        sleep(uniform(pidx, pidx + 1) // 1000)
 
         data_pages = []
         empty_tables = []
@@ -501,9 +558,13 @@ class MMURadix(MMU):
 
         # Cicle over every frame
         total_elems, iterator = addresses
-        for frame_addr in tqdm(iterator, position=-pidx, total=total_elems, leave=False):
+        for frame_addr in tqdm(
+            iterator, position=-pidx, total=total_elems, leave=False
+        ):
             frame_buf = mm.get_data(frame_addr, frame_size)
-            invalids, pt_classes, table_obj = self.parse_frame(frame_buf, frame_addr, frame_size)
+            invalids, pt_classes, table_obj = self.parse_frame(
+                frame_buf, frame_addr, frame_size
+            )
 
             # It is a data page
             if invalids or -2 in pt_classes:
@@ -516,20 +577,30 @@ class MMURadix(MMU):
 
         return page_tables, data_pages, empty_tables
 
-    def parse_frame(self, frame_buf, frame_addr, frame_size, frame_level=-1, mode="global"):
+    def parse_frame(
+        self, frame_buf, frame_addr, frame_size, frame_level=-1, mode="global"
+    ):
         frame_d = defaultdict(dict)
         if frame_level >= 0:
-            reseved_classes = self.machine.mmu.map_reserved_entries_to_levels[mode][frame_level]
-            data_classes = self.machine.mmu.map_datapages_entries_to_levels[mode][frame_level]
+            reseved_classes = self.machine.mmu.map_reserved_entries_to_levels[mode][
+                frame_level
+            ]
+            data_classes = self.machine.mmu.map_datapages_entries_to_levels[mode][
+                frame_level
+            ]
             ptr_class = self.machine.mmu.map_ptr_entries_to_levels[mode][frame_level]
             # frame_size = self.machine.mmu.map_level_to_table_size[mode][frame_level]
 
         invalids = 0
         empty_entries = 0
         # Unpack records inside the frame
-        for entry_idx, entry in enumerate(iter_unpack(self.paging_unpack_format, frame_buf)):
-
-            if frame_level >= 0 and entry_idx * self.machine.mmu.entries_size >= frame_size:
+        for entry_idx, entry in enumerate(
+            iter_unpack(self.paging_unpack_format, frame_buf)
+        ):
+            if (
+                frame_level >= 0
+                and entry_idx * self.machine.mmu.entries_size >= frame_size
+            ):
                 break
 
             entry = entry[0]
@@ -556,27 +627,41 @@ class MMURadix(MMU):
             else:
                 for entry_obj in entry_classes:
                     entry_type = type(entry_obj)
-                    if type(entry_obj) in data_classes or \
-                       type(entry_obj) is ptr_class or \
-                       type(entry_obj) in reseved_classes:
+                    if (
+                        type(entry_obj) in data_classes
+                        or type(entry_obj) is ptr_class
+                        or type(entry_obj) in reseved_classes
+                    ):
                         frame_d[entry_type][entry_idx] = entry_obj
                         break
                 else:
                     invalids += 1
 
         # Classify the frame
-        pt_classes = self.classify_frame(frame_d, empty_entries, int(frame_size // self.page_table_class.entry_size), mode=mode)
+        pt_classes = self.classify_frame(
+            frame_d,
+            empty_entries,
+            int(frame_size // self.page_table_class.entry_size),
+            mode=mode,
+        )
 
-        if -1 in pt_classes or -2 in pt_classes: # EMPTY or DATA
+        if -1 in pt_classes or -2 in pt_classes:  # EMPTY or DATA
             table_obj = None
         else:
-            table_obj = self.page_table_class(frame_addr, frame_size, frame_d, pt_classes)
+            table_obj = self.page_table_class(
+                frame_addr, frame_size, frame_d, pt_classes
+            )
         return invalids, pt_classes, table_obj
 
-    def classify_frame(self, frame_d, empty_c, entries_per_frame, mode="global", ):
-
+    def classify_frame(
+        self,
+        frame_d,
+        empty_c,
+        entries_per_frame,
+        mode="global",
+    ):
         if empty_c == entries_per_frame:
-            return [-1] # EMPTY
+            return [-1]  # EMPTY
 
         # For each level check if a table is a valid candidate
         frame_classes = []
@@ -593,15 +678,16 @@ class MMURadix(MMU):
                 frame_classes.append(level)
 
         if not frame_classes:
-            return [-2] # DATA
+            return [-2]  # DATA
         else:
             return frame_classes
+
 
 class PhysicalMemory:
     machine = None
 
     def __deepcopy__(self, memo):
-         return PhysicalMemory(self.raw_configuration)
+        return PhysicalMemory(self.raw_configuration)
 
     def __copy__(self):
         return PhysicalMemory(self.raw_configuration)
@@ -624,16 +710,12 @@ class PhysicalMemory:
         self._miasm_vm = None
         self._memregions = []
         self._memsize = 0
-        self.physpace = {
-            "ram": portion.empty(),
-            "not_ram": portion.empty()
-            }
+        self.physpace = {"ram": portion.empty(), "not_ram": portion.empty()}
         self.raw_configuration = regions_defs
 
         # Load dump RAM files
         try:
             for region_def in regions_defs["ram"]:
-
                 # Load the dump file for a memory region
                 fd = open(region_def["dumpfile"], "rb")
                 mm = mmap(fd.fileno(), 0, MAP_SHARED, PROT_READ)
@@ -642,16 +724,27 @@ class PhysicalMemory:
                 region_size = len(mm)
 
                 if region_size != region_def["end"] - region_def["start"] + 1:
-                    raise IOError("Declared size {} is different from real size {} for: {}".format(region_def["end"] - region_def["start"] + 1, region_size, region_def["dumpfile"]))
+                    raise IOError(
+                        "Declared size {} is different from real size {} for: {}".format(
+                            region_def["end"] - region_def["start"] + 1,
+                            region_size,
+                            region_def["dumpfile"],
+                        )
+                    )
 
-                self._memregions.append({"filename": region_def["dumpfile"],
-                                         "fd": fd,
-                                         "mmap": mm,
-                                         "size": region_size,
-                                         "start": region_def["start"],
-                                         "end": region_def["end"]
-                                         })
-                self.physpace["ram"] |= portion.closed(region_def["start"], region_def["end"])
+                self._memregions.append(
+                    {
+                        "filename": region_def["dumpfile"],
+                        "fd": fd,
+                        "mmap": mm,
+                        "size": region_size,
+                        "start": region_def["start"],
+                        "end": region_def["end"],
+                    }
+                )
+                self.physpace["ram"] |= portion.closed(
+                    region_def["start"], region_def["end"]
+                )
 
             self._memregions.sort(key=lambda x: x["start"])
             self._is_opened = True
@@ -662,9 +755,15 @@ class PhysicalMemory:
 
         # Load not RAM regions
         for region_def in regions_defs.get("not_ram", []):
-            self.physpace["not_ram"] |= portion.closed(region_def["start"], region_def["end"])
-        self.physpace["not_valid_regions"] = self.physpace["not_ram"].difference(self.physpace["ram"])
-        self.physpace["defined_regions"] = self.physpace["not_ram"] | self.physpace["ram"]
+            self.physpace["not_ram"] |= portion.closed(
+                region_def["start"], region_def["end"]
+            )
+        self.physpace["not_valid_regions"] = self.physpace["not_ram"].difference(
+            self.physpace["ram"]
+        )
+        self.physpace["defined_regions"] = (
+            self.physpace["not_ram"] | self.physpace["ram"]
+        )
 
     def __del__(self):
         self.close()
@@ -702,7 +801,9 @@ class PhysicalMemory:
     def get_data(self, start, size):
         for region in self._memregions:
             if region["start"] <= start <= region["end"]:
-                return region["mmap"][start-region["start"]:start-region["start"]+size]
+                return region["mmap"][
+                    start - region["start"] : start - region["start"] + size
+                ]
         return bytearray()
 
     def get_addresses(self, size, align_offset=0, cpus=1, max_address=-1):
@@ -741,17 +842,19 @@ class PhysicalMemory:
                     vcpus = cpus
 
                 first_elem = region_start + align_offset
-                multi_ranges[0].append(range(first_elem, region_start + range_size, size))
+                multi_ranges[0].append(
+                    range(first_elem, region_start + range_size, size)
+                )
 
                 prev_last = region_start + range_size
-                for i in range(1, vcpus-1):
+                for i in range(1, vcpus - 1):
                     r = (prev_last - align_offset - region_start) % size
                     if r == 0:
                         first_elem = prev_last
                     else:
                         first_elem = prev_last + (size - r)
 
-                    last_elem = (i+1) * range_size + region_start
+                    last_elem = (i + 1) * range_size + region_start
                     multi_ranges[i].append(range(first_elem, last_elem, size))
 
                     prev_last = last_elem
@@ -784,8 +887,12 @@ class PhysicalMemory:
 
         vm = Vm()
         for region_def in self._memregions:
-            vm.add_memory_page(region_def["start"], PAGE_READ | PAGE_WRITE | PAGE_EXEC,
-                               region_def["fd"].read(), region_def["filename"])
+            vm.add_memory_page(
+                region_def["start"],
+                PAGE_READ | PAGE_WRITE | PAGE_EXEC,
+                region_def["fd"].read(),
+                region_def["filename"],
+            )
             region_def["fd"].seek(0)
         self._miasm_vm = vm
         return self._miasm_vm
@@ -798,10 +905,11 @@ class PhysicalMemory:
             self._miasm_vm = None
             gc.collect()
 
-class MMUShell(Cmd):
-    intro = 'MMUShell.   Type help or ? to list commands.\n'
 
-    def __init__(self, completekey='tab', stdin=None, stdout=None, machine={}):
+class MMUShell(Cmd):
+    intro = "MMUShell.   Type help or ? to list commands.\n"
+
+    def __init__(self, completekey="tab", stdin=None, stdout=None, machine={}):
         super(MMUShell, self).__init__(completekey, stdin, stdout)
         self.machine = machine
         self.prompt = "[MMUShell " + self.machine.cpu.architecture + "]# "
@@ -816,9 +924,9 @@ class MMUShell(Cmd):
         except Exception as e:
             logger.fatal("Fatal error loading session data! Error:{}".format(e))
             import traceback
+
             print(traceback.print_exc())
             exit(1)
-
 
     def load_gtruth(self, gtruth_fd):
         try:
@@ -830,7 +938,7 @@ class MMUShell(Cmd):
 
     def do_exit(self, arg):
         """Exit :)"""
-        logger.info('Bye! :)')
+        logger.info("Bye! :)")
         return True
 
     def do_save_data(self, arg):
@@ -866,7 +974,9 @@ class MMUShell(Cmd):
         else:
             return int(value, 10)
 
-    def radix_roots_from_data_page(self, pg_lvl, pg_addr, rev_map_pages, rev_map_tables):
+    def radix_roots_from_data_page(
+        self, pg_lvl, pg_addr, rev_map_pages, rev_map_tables
+    ):
         # For a page address pointed by tables of level 'level' find all the radix root of trees containing it
 
         level_tables = set()
@@ -874,7 +984,11 @@ class MMUShell(Cmd):
 
         # Collect all table at level 'pg_lvl' which point to that page
         level_tables.update(rev_map_pages[pg_lvl][pg_addr])
-        logger.debug("radix_roots_from_data_pages: level_tables found {} for pg_addr {}".format(len(level_tables), hex(pg_addr)))
+        logger.debug(
+            "radix_roots_from_data_pages: level_tables found {} for pg_addr {}".format(
+                len(level_tables), hex(pg_addr)
+            )
+        )
 
         # Raise the tree in order to find the top table
         for tree_lvl in range(pg_lvl - 1, -1, -1):
@@ -883,11 +997,25 @@ class MMUShell(Cmd):
 
             level_tables = prev_level_tables
             prev_level_tables = set()
-            logger.debug("radix_roots_from_data_pages: level_tables found {} for pg_addr {}".format(len(level_tables), hex(pg_addr)))
+            logger.debug(
+                "radix_roots_from_data_pages: level_tables found {} for pg_addr {}".format(
+                    len(level_tables), hex(pg_addr)
+                )
+            )
 
         return set(level_tables)
 
-    def physpace(self, addr, page_tables, empty_tables, lvl=0, uperms=(True,)*6, hierarchical=False, mode="global", cache=defaultdict(dict)):
+    def physpace(
+        self,
+        addr,
+        page_tables,
+        empty_tables,
+        lvl=0,
+        uperms=(True,) * 6,
+        hierarchical=False,
+        mode="global",
+        cache=defaultdict(dict),
+    ):
         """Recursively evaluate the consistency and return the kernel/user physical space addressed"""
         pas = PAS()
         data_classes = self.machine.mmu.map_datapages_entries_to_levels[mode][lvl]
@@ -904,23 +1032,38 @@ class MMUShell(Cmd):
             cache[lvl][addr] = (True, pas)
             return True, pas
 
-        else: # Superior levels
+        else:  # Superior levels
             ptr_class = self.machine.mmu.map_ptr_entries_to_levels[mode][lvl]
             if ptr_class in page_tables[lvl][addr].entries:
                 for entry in page_tables[lvl][addr].entries[ptr_class].values():
                     if entry.address not in page_tables[lvl + 1]:
-                        if entry.address not in empty_tables: # It is not an empty table!
-                            logging.debug(f"physpace() radix: {hex(addr)} parent level: {lvl} table: {hex(entry.address)} invalid")
+                        if (
+                            entry.address not in empty_tables
+                        ):  # It is not an empty table!
+                            logging.debug(
+                                f"physpace() radix: {hex(addr)} parent level: {lvl} table: {hex(entry.address)} invalid"
+                            )
                             cache[lvl][addr] = (False, None)
                             return False, None
                     else:
                         if entry.address not in cache[lvl + 1]:
-                            low_cons, low_pas = self.physpace(entry.address, page_tables, empty_tables, lvl + 1, uperms=uperms, hierarchical=hierarchical, mode=mode, cache=cache)
+                            low_cons, low_pas = self.physpace(
+                                entry.address,
+                                page_tables,
+                                empty_tables,
+                                lvl + 1,
+                                uperms=uperms,
+                                hierarchical=hierarchical,
+                                mode=mode,
+                                cache=cache,
+                            )
                         else:
                             low_cons, low_pas = cache[lvl + 1][entry.address]
 
                         if not low_cons:
-                            logging.debug(f"physpace() radix: {hex(addr)} parent level: {lvl} table: {hex(entry.address)} invalid")
+                            logging.debug(
+                                f"physpace() radix: {hex(addr)} parent level: {lvl} table: {hex(entry.address)} invalid"
+                            )
                             cache[lvl][addr] = (False, None)
                             return False, None
 
@@ -930,7 +1073,10 @@ class MMUShell(Cmd):
                             pas.hierarchical_extend(low_pas, (True,) * 6)
 
             for data_class in data_classes:
-                if data_class in page_tables[lvl][addr].entries and data_class is not None:
+                if (
+                    data_class in page_tables[lvl][addr].entries
+                    and data_class is not None
+                ):
                     for entry in page_tables[lvl][addr].entries[data_class].values():
                         perms = entry.get_permissions()
                         pas.space[perms][entry.address] = entry.size
@@ -944,7 +1090,6 @@ class MMUShell(Cmd):
 
         # Split in possible table resolution paths
         for splitted_addr in self.machine.mmu.split_vaddr(vaddr):
-
             current_table_addr = cr3
             requested_steps = len(splitted_addr) - 1
             resolution_steps = 0
@@ -953,14 +1098,27 @@ class MMUShell(Cmd):
                 level_class, entry_idx = idx_t
                 # Missing valid table, no valid resolution path
                 if current_table_addr not in self.data.page_tables["global"][level_idx]:
-                    logging.debug(f"resolve_vaddr() Missing table {hex(current_table_addr)}")
+                    logging.debug(
+                        f"resolve_vaddr() Missing table {hex(current_table_addr)}"
+                    )
                     logging.debug("resolve_vaddr() RESOLUTION PATH FAILED! ########")
                     break
 
-                logging.debug(f"resolve_vaddr(): Resolution path Lvl: {level_class} Table: {hex(current_table_addr)} Entry addr: {hex( current_table_addr + self.machine.mmu.page_table_class.entry_size * entry_idx)}")
+                logging.debug(
+                    f"resolve_vaddr(): Resolution path Lvl: {level_class} Table: {hex(current_table_addr)} Entry addr: {hex( current_table_addr + self.machine.mmu.page_table_class.entry_size * entry_idx)}"
+                )
                 # Find valid entry in table
-                if entry_idx in self.data.page_tables["global"][level_idx][current_table_addr].entries[level_class]:
-                    current_table_addr = self.data.page_tables["global"][level_idx][current_table_addr].entries[level_class][entry_idx].address
+                if (
+                    entry_idx
+                    in self.data.page_tables["global"][level_idx][
+                        current_table_addr
+                    ].entries[level_class]
+                ):
+                    current_table_addr = (
+                        self.data.page_tables["global"][level_idx][current_table_addr]
+                        .entries[level_class][entry_idx]
+                        .address
+                    )
 
                     resolution_steps += 1
 
@@ -975,7 +1133,16 @@ class MMUShell(Cmd):
         else:
             return -1
 
-    def virtspace(self, addr, lvl=0, prefix=0, uperms=(True,)*6, hierarchical=False, mode="global", cache=defaultdict(dict)):
+    def virtspace(
+        self,
+        addr,
+        lvl=0,
+        prefix=0,
+        uperms=(True,) * 6,
+        hierarchical=False,
+        mode="global",
+        cache=defaultdict(dict),
+    ):
         """Recursively reconstruct virtual address space"""
 
         virtspace = VAS()
@@ -986,10 +1153,14 @@ class MMUShell(Cmd):
         if lvl == self.machine.mmu.radix_levels[mode] - 1:
             for data_class in data_classes:
                 shift = self.machine.mmu.map_entries_to_shifts[mode][data_class]
-                for entry_idx, entry in self.data.page_tables[mode][lvl][addr].entries[data_class].items():
+                for entry_idx, entry in (
+                    self.data.page_tables[mode][lvl][addr].entries[data_class].items()
+                ):
                     permissions = entry.get_permissions()
                     virt_addr = prefix | (entry_idx << shift)
-                    virtspace[permissions] |= portion.closedopen(virt_addr, virt_addr + entry.size)
+                    virtspace[permissions] |= portion.closedopen(
+                        virt_addr, virt_addr + entry.size
+                    )
 
             cache[lvl][addr] = virtspace
             return virtspace
@@ -997,7 +1168,9 @@ class MMUShell(Cmd):
         else:
             if ptr_class in self.data.page_tables[mode][lvl][addr].entries:
                 shift = self.machine.mmu.map_entries_to_shifts[mode][ptr_class]
-                for entry_idx, entry in self.data.page_tables[mode][lvl][addr].entries[ptr_class].items():
+                for entry_idx, entry in (
+                    self.data.page_tables[mode][lvl][addr].entries[ptr_class].items()
+                ):
                     if entry.address not in self.data.page_tables[mode][lvl + 1]:
                         continue
                     else:
@@ -1005,7 +1178,15 @@ class MMUShell(Cmd):
 
                         if entry.address not in cache[lvl + 1]:
                             virt_addr = prefix | (entry_idx << shift)
-                            low_virts = self.virtspace(entry.address, lvl + 1, virt_addr, permissions, hierarchical=hierarchical, mode=mode, cache=cache)
+                            low_virts = self.virtspace(
+                                entry.address,
+                                lvl + 1,
+                                virt_addr,
+                                permissions,
+                                hierarchical=hierarchical,
+                                mode=mode,
+                                cache=cache,
+                            )
                         else:
                             low_virts = cache[lvl + 1][entry.address]
 
@@ -1015,12 +1196,21 @@ class MMUShell(Cmd):
                             virtspace.hierarchical_extend(low_virts, (True,) * 6)
 
             for data_class in data_classes:
-                if data_class in self.data.page_tables[mode][lvl][addr].entries and data_class is not None:
+                if (
+                    data_class in self.data.page_tables[mode][lvl][addr].entries
+                    and data_class is not None
+                ):
                     shift = self.machine.mmu.map_entries_to_shifts[mode][data_class]
-                    for entry_idx, entry in self.data.page_tables[mode][lvl][addr].entries[data_class].items():
+                    for entry_idx, entry in (
+                        self.data.page_tables[mode][lvl][addr]
+                        .entries[data_class]
+                        .items()
+                    ):
                         permissions = entry.get_permissions()
                         virt_addr = prefix | (entry_idx << shift)
-                        virtspace[permissions] |= portion.closedopen(virt_addr, virt_addr + entry.size)
+                        virtspace[permissions] |= portion.closedopen(
+                            virt_addr, virt_addr + entry.size
+                        )
 
             cache[lvl][addr] = virtspace
             return virtspace

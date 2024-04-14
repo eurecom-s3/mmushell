@@ -3,6 +3,7 @@ import argparse
 import logging
 import importlib
 import yaml
+
 from cerberus import Validator
 
 # Set logging configuration
@@ -10,69 +11,104 @@ logger = logging.getLogger(__name__)
 
 # Schema for YAML configuration file
 machine_yaml_schema = {
-        'cpu': {
-            'required': True,
-            'type': 'dict',
-            'schema': {
-                'architecture': {'required': True, 'type': 'string', 'min': 1},
-                'endianness': {'required': True, 'type': 'string', 'min': 1},
-                'bits': {'required': True, 'type': 'integer', 'allowed': [32, 64]},
-                'processor_features': {'required': False, 'type': 'dict'},
-                'registers_values': {
-                    'required': False,
-                    'type': 'dict',
-                    'keysrules': {'type': 'string', 'min': 1},
-                    'valuesrules': {'type': 'integer'}
-                }
-            }
-        },
-        'mmu': {
-            'required': True,
-            'type': 'dict',
-            'schema': {
-                'mode': {'required': True, 'type': 'string', 'min': 1}
-                }
+    "cpu": {
+        "required": True,
+        "type": "dict",
+        "schema": {
+            "architecture": {"required": True, "type": "string", "min": 1},
+            "endianness": {"required": True, "type": "string", "min": 1},
+            "bits": {"required": True, "type": "integer", "allowed": [32, 64]},
+            "processor_features": {"required": False, "type": "dict"},
+            "registers_values": {
+                "required": False,
+                "type": "dict",
+                "keysrules": {"type": "string", "min": 1},
+                "valuesrules": {"type": "integer"},
             },
-        'memspace': {
-            'required': True,
-            'type': 'dict',
-            'schema': {
-                'ram': {
-                    'required': True,
-                    'type': 'list',
-                    'minlength': 1,
-                    'schema': {
-                        'type': 'dict',
-                        'schema': {
-                            'start': {'required': True, 'type': 'integer', 'min': 0, 'max': 0xFFFFFFFFFFFFFFFF},
-                            'end': {'required': True, 'type': 'integer', 'min': 0, 'max': 0xFFFFFFFFFFFFFFFF},
-                            'dumpfile': {'required': True, 'type': 'string', 'min': 0}
-                        }
-                    }
+        },
+    },
+    "mmu": {
+        "required": True,
+        "type": "dict",
+        "schema": {"mode": {"required": True, "type": "string", "min": 1}},
+    },
+    "memspace": {
+        "required": True,
+        "type": "dict",
+        "schema": {
+            "ram": {
+                "required": True,
+                "type": "list",
+                "minlength": 1,
+                "schema": {
+                    "type": "dict",
+                    "schema": {
+                        "start": {
+                            "required": True,
+                            "type": "integer",
+                            "min": 0,
+                            "max": 0xFFFFFFFFFFFFFFFF,
+                        },
+                        "end": {
+                            "required": True,
+                            "type": "integer",
+                            "min": 0,
+                            "max": 0xFFFFFFFFFFFFFFFF,
+                        },
+                        "dumpfile": {"required": True, "type": "string", "min": 0},
+                    },
                 },
-                'not_ram': {
-                    'required': True,
-                    'type': 'list',
-                    'minlength': 1,
-                    'schema': {
-                        'type': 'dict',
-                        'schema': {
-                            'start': {'required': True, 'type': 'integer', 'min': 0, 'max': 0xFFFFFFFFFFFFFFFF},
-                            'end': {'required': True, 'type': 'integer', 'min': 0, 'max': 0xFFFFFFFFFFFFFFFF},
-                        }
-                    }
-                }
-            }
-        }
-    }
+            },
+            "not_ram": {
+                "required": True,
+                "type": "list",
+                "minlength": 1,
+                "schema": {
+                    "type": "dict",
+                    "schema": {
+                        "start": {
+                            "required": True,
+                            "type": "integer",
+                            "min": 0,
+                            "max": 0xFFFFFFFFFFFFFFFF,
+                        },
+                        "end": {
+                            "required": True,
+                            "type": "integer",
+                            "min": 0,
+                            "max": 0xFFFFFFFFFFFFFFFF,
+                        },
+                    },
+                },
+            },
+        },
+    },
+}
+
 
 def main():
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("MACHINE_CONFIG", help="YAML file describing the machine", type=argparse.FileType("r"))
-    parser.add_argument("--gtruth", help="Ground truth from QEMU registers", type=argparse.FileType("rb", 0), default=None)
-    parser.add_argument("--session", help="Data file of a previous MMUShell session", type=str, default=None)
-    parser.add_argument("--debug", help="Enable debug output", action="store_true", default=False)
+    parser.add_argument(
+        "MACHINE_CONFIG",
+        help="YAML file describing the machine",
+        type=argparse.FileType("r"),
+    )
+    parser.add_argument(
+        "--gtruth",
+        help="Ground truth from QEMU registers",
+        type=argparse.FileType("rb", 0),
+        default=None,
+    )
+    parser.add_argument(
+        "--session",
+        help="Data file of a previous MMUShell session",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--debug", help="Enable debug output", action="store_true", default=False
+    )
     args = parser.parse_args()
 
     # Set logging system
@@ -98,7 +134,9 @@ def main():
 
     # Create the Machine class
     try:
-        architecture_module = importlib.import_module("architectures." + machine_config["cpu"]["architecture"])
+        architecture_module = importlib.import_module(
+            "architectures." + machine_config["cpu"]["architecture"]
+        )
     except ModuleNotFoundError:
         logger.fatal("Unkown architecture!")
         exit(1)
@@ -123,5 +161,5 @@ def main():
     shell.cmdloop()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
