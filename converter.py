@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 import yaml
-import argparse
-from sortedcontainers import SortedDict
 import json
+import argparse
+
+from sortedcontainers import SortedDict
 
 
 def main():
