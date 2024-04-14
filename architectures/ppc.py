@@ -1,25 +1,28 @@
+import logging
+import portion
+
 from architectures.generic import Machine as MachineDefault
 from architectures.generic import CPU as CPUDefault
 from architectures.generic import PhysicalMemory as PhysicalMemoryDefault
 from architectures.generic import MMUShell as MMUShellDefault
 from architectures.generic import MMU as MMUDefault
 from architectures.generic import CPUReg
-import logging
-from prettytable import PrettyTable
-from dataclasses import dataclass
-from tqdm import tqdm
-from struct import unpack, iter_unpack
-from collections import defaultdict
+
 from miasm.analysis.machine import Machine as MIASMMachine
 from miasm.core.bin_stream import bin_stream_vm
 from miasm.core.locationdb import LocationDB
-from copy import deepcopy
-from pprint import pprint
-from time import sleep
+
+from prettytable import PrettyTable
+from dataclasses import dataclass
+from collections import defaultdict
+from struct import unpack, iter_unpack
 from random import uniform
+from pprint import pprint
+from tqdm import tqdm
+from copy import deepcopy
+from time import sleep
 from copy import deepcopy, copy
 from math import log2
-import portion
 
 logger = logging.getLogger(__name__)
 

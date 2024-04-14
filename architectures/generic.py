@@ -1,5 +1,12 @@
+import sys
+import gc
+import os
+import random
+import logging
 import portion
-from mmap import mmap, MAP_SHARED, PROT_READ, MADV_HUGEPAGE
+import importlib
+import multiprocessing as mp
+
 from miasm.jitter.VmMngr import Vm
 from miasm.jitter.csts import PAGE_READ, PAGE_WRITE, PAGE_EXEC
 from miasm.core.locationdb import LocationDB
@@ -9,30 +16,24 @@ from miasm.ir.symbexec import SymbolicExecutionEngine
 from miasm.expression.expression import ExprInt, ExprId
 from miasm.core.bin_stream import bin_stream_file
 from miasm.analysis.depgraph import DependencyGraph
+
+from mmap import mmap, MAP_SHARED, PROT_READ, MADV_HUGEPAGE
 from tqdm import tqdm
 from itertools import chain
-import logging
 from compress_pickle import load, dump
 from cmd import Cmd
-import sys
-import importlib
 from IPython import embed
-import multiprocessing as mp
-import random
 from collections import defaultdict, deque
-import sys
+from dataclasses import dataclass, field
 from copy import deepcopy
 from pickle import load as Load
-from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any, Dict
 from time import sleep
 from random import uniform
 from struct import iter_unpack, unpack
 from copy import deepcopy, copy
-import sys
-import gc
-import os
+
 
 logger = logging.getLogger(__name__)
 

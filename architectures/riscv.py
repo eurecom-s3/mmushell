@@ -1,23 +1,23 @@
+import logging
+import portion
+import multiprocessing as mp
+
 from architectures.generic import Machine as MachineDefault
 from architectures.generic import CPU as CPUDefault
 from architectures.generic import PhysicalMemory as PhysicalMemoryDefault
 from architectures.generic import MMUShell as MMUShellDefault
 from architectures.generic import TableEntry, PageTable, MMURadix, PAS, RadixTree
-import logging
+
+from more_itertools import divide
 from collections import defaultdict, deque
 from prettytable import PrettyTable
+from dataclasses import dataclass
+from IPython import embed
+from random import uniform
+from struct import iter_unpack, unpack
 from time import sleep
 from tqdm import tqdm
 from copy import deepcopy, copy
-from random import uniform
-from struct import iter_unpack, unpack
-from dataclasses import dataclass
-import multiprocessing as mp
-
-# import cProfile
-import portion
-from more_itertools import divide
-from IPython import embed
 
 logger = logging.getLogger(__name__)
 
