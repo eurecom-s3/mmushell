@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 
+import json
+import argparse
+import traceback
 import numpy as np
+
 from elftools.elf.elffile import ELFFile
 from elftools.elf.segments import NoteSegment
-import json
+from compress_pickle import load as load_c
 from collections import defaultdict
+from bisect import bisect
+from pickle import load
 from struct import iter_unpack
 from tqdm import tqdm
-from bisect import bisect
-import argparse
-import json
-from compress_pickle import load as load_c
-from pickle import load
-import traceback
 
 
 def main():
