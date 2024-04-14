@@ -23,7 +23,7 @@ On Nix/NixOS :
 ```shell
 $ nix develop
 # or with direnv
-$ direnv allow .devenv
+$ direnv allow .
 ```
 
 ## Usage
