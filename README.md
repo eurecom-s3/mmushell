@@ -26,6 +26,14 @@ $ nix develop
 $ direnv allow .
 ```
 
+## Organisation
+
+- `architectures/` : various architectures parsers and a generic one
+- `qemu/` : contains scripts and patch necessary to get ground truth registers values from an emulated system
+- `mmushell.py` : main script allowing to reconstruct virtual address spaces from a memory dump, more instructions below
+- `converter.py` : export dump to be used in [Fossil](https://github.com/eurecom-s3/fossil). It adds CPU registers and convert the kernel physical address space in virtual address space one. **Note**: you can ignore this script, is not part of mmushell
+- `exporter.py` : this is a POC showing the possible use of techniques to perform a preliminary analysis of a dump by exporting each virtual address space as a self-contained ELF Core dump file. See section [TOWARDS OS AGNOSTIC MEMORY FORENSICS](https://www.s3.eurecom.fr/docs/tops22_oliveri.pdf).
+
 ## Usage
 
 ### Dataset
@@ -84,6 +92,9 @@ mmushell.py: error: the following arguments are required: MACHINE_CONFIG
             dumpfile: linux.dump
 
         # Physical memory regions that are not RAM
+        # Example: reserved regions for MMIO, ROM, ... See https://en.wikipedia.org/wiki/Memory-mapped_I/O_and_port-mapped_I/O#Examples
+        # Those portions are needed because page tables also maps these special physical addresses, so the CPU can use these associated
+        # virtual addresses to write or read from them. We need to distinguish them otherwise we can misinterpret some page tables as data pages.
         not_ram:
           - start: 0x0000000000000000
             end: 0x0000000000011fff
