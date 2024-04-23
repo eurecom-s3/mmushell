@@ -1,3 +1,4 @@
+# mmushell
 wheel
 qmp
 prettytable
@@ -15,3 +16,8 @@ cerberus
 sortedcontainers
 numpy
 pyelftools
+
+# documentation
+mkdocs
+mkdocs-material
+mkdocstrings[python]

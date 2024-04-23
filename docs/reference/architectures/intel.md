@@ -1,0 +1,3 @@
+## intel
+
+::: mmushell.architectures.intel

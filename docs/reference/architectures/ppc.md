@@ -1,0 +1,3 @@
+## PowerPC
+
+::: mmushell.architectures.ppc
