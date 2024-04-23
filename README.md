@@ -28,11 +28,11 @@ $ direnv allow .
 
 ## Organisation
 
-- `architectures/` : various architectures parsers and a generic one
-- `qemu/` : contains scripts and patch necessary to get ground truth registers values from an emulated system
-- `mmushell.py` : main script allowing to reconstruct virtual address spaces from a memory dump, more instructions below
+- `mmushell/architectures/` : various architectures parsers and a generic one
+- `mmushell/mmushell.py` : main script allowing to reconstruct virtual address spaces from a memory dump, more instructions below
+- `mmushell/exporter.py` : this is a POC showing the possible use of techniques to perform a preliminary analysis of a dump by exporting each virtual address space as a self-contained ELF Core dump file. See section [TOWARDS OS AGNOSTIC MEMORY FORENSICS](https://www.s3.eurecom.fr/docs/tops22_oliveri.pdf).
 - `converter.py` : export dump to be used in [Fossil](https://github.com/eurecom-s3/fossil). It adds CPU registers and convert the kernel physical address space in virtual address space one. **Note**: you can ignore this script, is not part of mmushell
-- `exporter.py` : this is a POC showing the possible use of techniques to perform a preliminary analysis of a dump by exporting each virtual address space as a self-contained ELF Core dump file. See section [TOWARDS OS AGNOSTIC MEMORY FORENSICS](https://www.s3.eurecom.fr/docs/tops22_oliveri.pdf).
+- `qemu/` : contains scripts and patch necessary to get ground truth registers values from an emulated system
 
 ## Usage
 
