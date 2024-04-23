@@ -5,11 +5,32 @@ site_description: Documentation for MMUShell
 repo_name: Memoscopy/mmushell
 repo_url: https://github.com/Memoscopy/mmushell
 
+edit_uri: edit/main/docs/
+
 theme:
   name: material
+  features:
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.action.edit
+    - navigation.instant
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.path
+    - navigation.top
+  icon:
+    repo: fontawesome/brands/github
 
 plugins:
   - mkdocstrings
+  - search
+  - git-revision-date-localized:
+      enable_creation_date: true
+  - git-committers:
+      repository: Memoscopy/mmushell
+      branch: main
 
 markdown_extensions:
   - admonition
