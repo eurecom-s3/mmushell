@@ -50,13 +50,33 @@ class DisableLogs:
 
 
 class CPUReg:
-    def is_valid(self, value):
+    """Represents a CPU register"""
+
+    def is_valid(self, value) -> bool:
+        """Check if the value is valid for the register
+
+        Being a valid register is very specific to the architecture, so this function is aimed to be overloaded by child classes
+
+        Args:
+            value: the value to check
+
+        Returns:
+            True if the value is valid, False otherwise
+        """
         return True
 
     def is_mmu_equivalent_to(self, other_reg):
+        """Check if the register is equivalent to another register
+
+        Args:
+            other_reg: the other register to compare
+
+        See child classes for more details
+        """
         raise NotImplementedError
 
     def __hash__(self):
+        """Hash of the contained value from register"""
         return hash(self.value)
 
     def __eq__(self, other):
@@ -64,7 +84,26 @@ class CPUReg:
 
 
 class TableEntry:
+    """Represents a table Page Table Entry
+
+    It holds the mapping between a virtual address of a page and the address of a physical frame.
+    There is also auxiliary information about the page such as a present bit, a dirty or modified bit, address space or process ID information, amongst others.
+
+    Aimed to be inherited by child classes to represent different architectures
+
+    Attributes:
+        address: the virtual address of the page
+        flags: the flags of the page
+    """
+
     def __init__(self, address, flags, *args):
+        """Initialize the Table Entry
+
+        Args:
+            address: the virtual address of the page
+            flags: the flags of the page
+            *args: additional arguments
+        """
         self.address = address
         self.flags = flags
 
