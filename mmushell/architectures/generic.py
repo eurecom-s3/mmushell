@@ -181,6 +181,34 @@ def perms_bool_to_string(kr, kw, kx, r, w, x):
 
 
 class RadixTree:
+    """Represents a Radix Tree
+
+    Radix trees maintain a hierarchical representation of the SAS. Each tree is composed by N-1 levels of
+    directory tables, each containing entries that either point to tables of the lower level or to a physical
+    memory page (huge pages), whose size depends on the level itself.
+    The final level is composed of page tables that point only to same-size physical memory pages.
+    The tree root is the physical address of the directory table of Level 0 and it identifies uniquely the SAS
+    and, consequently, the process to which it is assigned. This address is stored in a special system register
+    (here generically called RADIX_ROOT) by the operating system and it is used by the MMU to locate the radix
+    tree when it starts a new translation.
+    The translation performed by the MMU starts from the root table pointed by the address contained in RADIX_ROOT:
+    the MMU then divides the segmented address into two parts: a prefix and a page offset.
+    The prefix part is divided into a series of N chunks that represent the hierarchical sequence of indexes to be
+    used to locate the entry inside a table of the corresponding level. This process ends when an entry points to
+    a physical page. At this point, the MMU returns the concatenation of the page offset extracted by the segmented
+    address to the physical page address found in the last page table entry.
+
+    Aimed to be inherited by child classes to represent different architectures
+
+    Attributes:
+        top_table: the address of the top table
+        init_level: the initial level of the radix tree
+        pas: the Physical Address Space
+        vas: the Virtual Address Space
+        kernel: if the kernel space is enabled
+        user: if the user space is enabled
+    """
+
     labels = [
         "Radix address",
         "First level",
@@ -190,6 +218,16 @@ class RadixTree:
     addr_fmt = "0x{:016x}"
 
     def __init__(self, top_table, init_level, pas, vas, kernel=True, user=True):
+        """Initialize the Radix Tree
+
+        Args:
+            top_table: the address of the top table
+            init_level: the initial level of the radix tree
+            pas: the Physical Address Space
+            vas: the Virtual Address Space
+            kernel: if the kernel space is enabled
+            user: if the user space is enabled
+        """
         self.top_table = top_table
         self.init_level = init_level
         self.pas = pas
@@ -198,12 +236,18 @@ class RadixTree:
         self.user = user
 
     def __repr__(self):
+        """String representation of the Radix Tree"""
         e_resume = self.entry_resume_stringified()
         return str(
             [self.labels[i] + ": " + str(e_resume[i]) for i in range(len(self.labels))]
         )
 
-    def entry_resume(self):
+    def entry_resume(self) -> list:
+        """Get the resume of the Radix Tree
+
+        Returns:
+            a list with the resume of the Radix Tree
+        """
         return [
             self.top_table,
             self.init_level,
@@ -211,7 +255,12 @@ class RadixTree:
             self.pas.get_user_size(),
         ]
 
-    def entry_resume_stringified(self):
+    def entry_resume_stringified(self) -> list:
+        """Get the resume of the Radix Tree as string
+
+        Returns:
+            a list with the resume of the Radix Tree as string
+        """
         res = self.entry_resume()
         res[0] = self.addr_fmt.format(res[0])
         for idx, r in enumerate(res[1:], start=1):
@@ -220,11 +269,27 @@ class RadixTree:
 
 
 class VAS(defaultdict):
+    """Represents a Virtual Address Space
+
+    The Virtual Address Space (VAS) is a hierarchical data structure that represents the SAS of a process.
+    The VAS is composed of a set of entries, each one representing a set of contiguous virtual addresses
+    with the same permissions. The VAS is organized in a hierarchical way, where each entry is identified by
+    a set of permissions and contains a set of intervals of contiguous virtual addresses.
+
+    Aimed to be inherited by child classes to represent different architectures
+
+    Attributes:
+        default_factory: the default interval for the VAS
+
+    Note: the default_factory is initialized as an empty interval to avoid the need of checking if a key is present before accessing it
+    """
+
     def __init__(self, *args, **kwargs):
         super(VAS, self).__init__()
         self.default_factory = portion.empty
 
     def __repr__(self):
+        """String representation of the VAS"""
         s = ""
         for k in self:
             k_str = perms_bool_to_string(*k)
@@ -234,6 +299,12 @@ class VAS(defaultdict):
         return s
 
     def hierarchical_extend(self, other, uperms):
+        """Extend this VAS with another VAS
+
+        Args:
+            other: the other VAS to extend with
+            uperms: the permissions to use
+        """
         for perm in other:
             new_perm = []
             for i in range(6):
@@ -244,10 +315,29 @@ class VAS(defaultdict):
 
 @dataclass
 class PAS:
+    """Represents a Physical Address Space
+
+    The Physical Address Space (PAS) is a hierarchical data structure that represents the SAS of the physical memory.
+    The PAS is composed of a set of entries, each one representing a set of contiguous physical addresses with the same permissions.
+    The PAS is organized in a hierarchical way, where each entry is identified by a set of permissions and contains a set of intervals of contiguous physical addresses.
+
+    Attributes:
+        space: the space of the PAS
+        space_size: the size of the space
+
+    Note: those attributes are initialized as defaultdicts to avoid the need of checking if a key is present before accessing it
+    """
+
     space: Dict = field(default_factory=lambda: defaultdict(dict))
     space_size: Dict = field(default_factory=lambda: defaultdict(int))
 
     def hierarchical_extend(self, other, uperms):
+        """Extend this PAS with another PAS
+
+        Args:
+            other: the other PAS to extend with
+            uperms: the permissions to use
+        """
         for perm in other.space:
             new_perm = []
             for i in range(6):
@@ -257,6 +347,14 @@ class PAS:
             self.space_size[new_perm] += other.space_size[perm]
 
     def __contains__(self, key):
+        """Check if a key is present in the PAS
+
+        Args:
+            key: the key to check
+
+        Returns:
+            True if the key is present, False otherwise
+        """
         for addresses in self.space.values():
             for address in addresses:
                 if address <= key < address + addresses[address]:
@@ -264,6 +362,14 @@ class PAS:
         return False
 
     def is_in_kernel_space(self, key):
+        """Check if a key is in the kernel space
+
+        Args:
+            key: the key to check
+
+        Returns:
+            True if the key is in the kernel space, False otherwise
+        """
         for perms, addresses in self.space.items():
             if perms[0] or perms[1] or perms[2]:
                 for address in addresses:
@@ -272,6 +378,14 @@ class PAS:
         return False
 
     def is_in_kernel_x_space(self, key):
+        """Check if a key is in the kernel executable space
+
+        Args:
+            key: the key to check
+
+        Returns:
+            True if the key is in the kernel executable space, False otherwise
+        """
         for perms, addresses in self.space.items():
             if perms[0] and perms[2]:
                 for address in addresses:
@@ -280,6 +394,14 @@ class PAS:
         return False
 
     def is_in_user_space(self, key):
+        """Check if a key is in the user space
+
+        Args:
+            key: the key to check
+
+        Returns:
+            True if the key is in the user space, False otherwise
+        """
         for perms, addresses in self.space.items():
             if not (perms[0] or perms[1] or perms[2]):
                 for address in addresses:
@@ -288,6 +410,7 @@ class PAS:
         return False
 
     def __repr__(self):
+        """String representation of the PAS"""
         ret = ""
         for perm in self.space:
             symb = lambda x, s: s if x else "-"
@@ -303,6 +426,7 @@ class PAS:
         return ret
 
     def get_kernel_size(self):
+        """Get the size of the kernel space"""
         size = 0
         for perm in self.space:
             if not (perm[3] or perm[4] or perm[5]):
@@ -310,6 +434,7 @@ class PAS:
         return size
 
     def get_user_size(self):
+        """Get the size of the user space"""
         size = 0
         for perm in self.space:
             if perm[3] or perm[4] or perm[5]:
@@ -318,10 +443,29 @@ class PAS:
 
 
 class Machine:
+    """Represents a generic machine
+
+    A machine is composed by a CPU, a MMU and a memory. It is able to parse the memory in parallel and to extract the dataflow of the registers.
+
+    Attributes:
+        cpu: the CPU of the machine
+        mmu: the MMU of the machine
+        memory: the memory of the machine
+        gtruth: the ground truth of the machine
+        data: the data of the machine
+    """
+
     @classmethod
     def from_machine_config(cls, machine_config, **kwargs):
-        """Create a machine starting from a YAML file descriptor"""
+        """Create a machine starting from a YAML file descriptor
 
+        Args:
+            machine_config: the YAML file descriptor
+            **kwargs: additional arguments
+
+        Returns:
+            a new Machine object
+        """
         # Check no intersection between memory regions
         ram_portion = portion.empty()
         for region_dict in machine_config["memspace"]["ram"]:
@@ -355,6 +499,14 @@ class Machine:
         return architecture_module.Machine(cpu, mmu, memory, **kwargs)
 
     def __init__(self, cpu, mmu, memory, **kwargs):
+        """Initialize the Machine
+
+        Args:
+            cpu: the CPU of the machine
+            mmu: the MMU of the machine
+            memory: the memory of the machine
+            **kwargs: additional arguments
+        """
         self.cpu = cpu
         self.mmu = mmu
         self.memory = memory
@@ -365,6 +517,13 @@ class Machine:
         self.memory.machine = self
 
     def get_miasm_machine(self):
+        """Get the Miasm machine
+
+        Aimed to be overloaded by child classes
+
+        Returns:
+            the Miasm machine
+        """
         return None
 
     def __del__(self):
@@ -372,8 +531,21 @@ class Machine:
 
     def apply_parallel(
         self, frame_size, parallel_func, iterators=None, max_address=-1, **kwargs
-    ):
-        """Apply parallel_func using multiple core to frame_size chunks of RAM or iterators arguments"""
+    ) -> list:
+        """Run parallel_func using multiple core to frame_size chunks of RAM or iterators arguments
+
+        Only used in child classes for parsing memory
+
+        Args:
+            frame_size: the size of the frame to parse
+            parallel_func: the function to run in parallel
+            iterators: the iterators to use
+            max_address: the maximum address to parse
+            **kwargs: additional arguments
+
+        Returns:
+            a list of the results of parallel_func
+        """
 
         # Prepare the pool
         logger.info("Parsing memory...")
@@ -404,16 +576,47 @@ class Machine:
 
 
 class CPU:
+    """Represents a generic CPU
+
+    A CPU is able to parse opcodes and to find the dataflow of the registers.
+
+    Aimed to be inherited by child classes to represent different architectures
+
+    Attributes:
+        architecture: the architecture of the CPU
+        bits: the bits of the CPU
+        endianness: the endianness of the CPU
+        processor_features: the processor features of the CPU
+        registers_values: the registers values of the CPU
+        opcode_to_mmu_regs: the mapping between opcodes and MMU registers
+        opcode_to_gregs: the mapping between opcodes and general registers
+        machine: the machine of the CPU
+    """
+
     opcode_to_mmu_regs = None
     opcode_to_gregs = None
 
     @classmethod
     def from_cpu_config(cls, cpu_config, **kwargs):
+        """Create a CPU starting from a YAML file descriptor
+
+        Args:
+            cpu_config: the YAML file descriptor
+            **kwargs: additional arguments
+
+        Returns:
+            a new CPU object
+        """
         return CPU(cpu_config)
 
     machine = None
 
     def __init__(self, params):
+        """Initialize the CPU
+
+        Args:
+            params: the parameters of the CPU
+        """
         self.architecture = params["architecture"]
         self.bits = params["bits"]
         self.endianness = params["endianness"]
@@ -422,20 +625,76 @@ class CPU:
 
     @staticmethod
     def extract_bits_little(entry, pos, n):
+        """Extract bits from an entry in little endian
+
+        Args:
+            entry: the entry to extract bits from
+            pos: the position of the bits
+            n: the number of bits to extract
+
+        Returns:
+            the extracted bits
+        """
         return (entry >> pos) & ((1 << n) - 1)
 
     @staticmethod
     def extract_bits_big(entry, pos, n):
+        """Extract bits from an entry in big endian
+
+        Args:
+            entry: the entry to extract bits from
+            pos: the position of the bits
+            n: the number of bits to extract
+
+        Returns:
+            the extracted bits
+        """
         return (entry >> (32 - pos - n)) & ((1 << n) - 1)
 
     @staticmethod
     def extract_bits_big64(entry, pos, n):
+        """Extract bits from an entry in big endian 64 bits
+
+        Args:
+            entry: the entry to extract bits from
+            pos: the position of the bits
+            n: the number of bits to extract
+
+        Returns:
+            the extracted bits
+        """
         return (entry >> (64 - pos - n)) & ((1 << n) - 1)
 
     def parse_opcode(self, buff, page_addr, offset):
+        """Parse an opcode
+
+        Aimed to be overloaded by child classes
+
+        Args:
+            buff: the buffer to parse
+            page_addr: the address of the page
+            offset: the offset of the opcode
+
+        Returns:
+            the parsed opcode
+        """
         raise NotImplementedError
 
-    def parse_opcodes_parallel(self, addresses, frame_size, pidx, **kwargs):
+    def parse_opcodes_parallel(self, addresses, frame_size, pidx, **kwargs) -> dict:
+        """Parse opcodes in parallel
+
+        Every process sleep a random delay in order to desynchronise access to disk and maximixe the throuput
+
+        Args:
+            addresses: the addresses to parse
+            frame_size: the size of the frame
+            pidx: the process index
+            **kwargs: additional arguments
+
+        Returns:
+            dictionnary of parsed opcodes
+        """
+        # Every process sleep a random delay in order to desincronize access to disk and maximixe the throuput
         sleep(uniform(pidx, pidx + 1) // 1000)
 
         opcodes = {}
@@ -463,7 +722,16 @@ class CPU:
 
         return opcodes
 
-    def find_registers_values_dataflow(self, opcodes, zero_registers=[]):
+    def find_registers_values_dataflow(self, opcodes, zero_registers=[]) -> set:
+        """Find the dataflow of the registers
+
+        Args:
+            opcodes: the opcodes to analyze
+            zero_registers: the registers to ignore
+
+        Returns:
+            a dictionnary with the dataflow of the registers
+        """
         # Miasm require to define a memory() function to access to the underlaying
         # memory layer during the Python translation
         # WORKAROUND: memory() does not permit more than 2 args...
@@ -485,7 +753,7 @@ class CPU:
         logging.getLogger("asmblock").disabled = True
 
         registers_values = defaultdict(set)
-        # We use a stack data structure (deque) in order to manage also parent functions (EXPERIMENTAL not implemented here)
+        # We use a stack data structure (deque) in order to also manage parent functions (EXPERIMENTAL not implemented here)
         instr_deque = deque([(addr, opcodes[addr]) for addr in opcodes])
         while len(instr_deque):
             instr_addr, instr_data = instr_deque.pop()
@@ -585,25 +853,118 @@ class CPU:
 
 
 class MMU:
+    """Represents a generic MMU
+
+    The MMU is the hardware device that converts the virtual addresses used by the processor to physical addresses.
+    To accomplish this task, the MMU needs to be configured by using special system registers, while in-memory
+    structures that maintain the virtual-to-physical mapping have to be defined and continuously updated by the
+    operating system.
+    When the MMU fails to resolve a requested virtual address, it raises an interrupt to signal the OS to update
+    the in-memory related structures.
+    It is important to note that the MMU demands strict conformity of the shape and topology of the in-memory structure
+    to the ISA and MMU configuration requirements. Otherwise, it raises an exception and aborts the address translation.
+    The translation process can involve up to two separate translations, both accomplished by the MMU: segmentation,
+    which converts virtual to segmented addresses, and paging, which converts segmented addresses to physical ones.
+    Some architectures use either one or the other, while others use both.
+    In general, when the system boots, the MMU is virtually disabled and all the virtual addresses are identically
+    transformed to physical ones. This allows the OS to start in a simplified memory environment and gives it time to
+    properly configure and enable the MMU before spawning other processes.
+    Since address translation is a performance bottleneck, the latest translated addresses are cached in a few but low-
+    latency hardware structures called Translation Lookaside Buffers (TLBs). Before starting a translation, the MMU checks
+    if TLBs contain an already resolved virtual address and, if so, it returns directly the corresponding physical addresses.
+
+    Aimed to be inherited by child classes to represent different architectures
+
+    Attributes:
+        mmu_config: the configuration of the MMU
+        PAGE_SIZE: the size of the page
+        extract_bits: the function to extract bits
+        paging_unpack_format: the format of the paging
+        page_table_class: the class of the page table
+        radix_levels: the levels of the radix tree
+        top_prefix: the top prefix of the radix tree
+        entries_size: the size of the entries
+        map_ptr_entries_to_levels: the mapping between pointer entries and levels
+        map_datapages_entries_to_levels: the mapping between data pages entries and levels
+        map_level_to_table_size: the mapping between levels and table sizes
+        map_entries_to_shifts: the mapping between entries and shifts
+        map_reserved_entries_to_levels: the mapping between reserved entries and levels
+        machine: the machine of the MMU
+    """
+
     machine = None
 
     def __init__(self, mmu_config):
+        """Initialize the MMU
+
+        Args:
+            mmu_config: the configuration of the MMU
+        """
         self.mmu_config = mmu_config
 
     @staticmethod
     def extract_bits_little(entry, pos, n):
+        """Extract bits from an entry in little endian
+
+        Args:
+            entry: the entry to extract bits from
+            pos: the position of the bits
+            n: the number of bits to extract
+
+        Returns:
+            the extracted bits
+        """
         return (entry >> pos) & ((1 << n) - 1)
 
     @staticmethod
     def extract_bits_big(entry, pos, n):
+        """Extract bits from an entry in big endian
+
+        Args:
+            entry: the entry to extract bits from
+            pos: the position of the bits
+            n: the number of bits to extract
+
+        Returns:
+            the extracted bits
+        """
         return (entry >> (32 - pos - n)) & ((1 << n) - 1)
 
     @staticmethod
     def extract_bits_big64(entry, pos, n):
+        """Extract bits from an entry in big endian 64 bits
+
+        Args:
+            entry: the entry to extract bits from
+            pos: the position of the bits
+            n: the number of bits to extract
+
+        Returns:
+            the extracted bits
+        """
         return (entry >> (64 - pos - n)) & ((1 << n) - 1)
 
 
 class MMURadix(MMU):
+    """Represents a MMU that uses a Radix Tree
+
+    Aimed to be inherited by child classes to represent different architectures
+
+    Attributes:
+        PAGE_SIZE: the size of the page
+        extract_bits: the function to extract bits
+        paging_unpack_format: the format of the paging
+        page_table_class: the class of the page table
+        radix_levels: the levels of the radix tree
+        top_prefix: the top prefix of the radix tree
+        entries_size: the size of the entries
+        map_ptr_entries_to_levels: the mapping between pointer entries and levels
+        map_datapages_entries_to_levels: the mapping between data pages entries and levels
+        map_level_to_table_size: the mapping between levels and table sizes
+        map_entries_to_shifts: the mapping between entries and shifts
+        map_reserved_entries_to_levels: the mapping between reserved entries and levels
+    """
+
     PAGE_SIZE = 0
     extract_bits = None
     paging_unpack_format = ""
@@ -618,10 +979,29 @@ class MMURadix(MMU):
     map_reserved_entries_to_levels = {}
 
     def classify_entry(self, page_addr, entry):
+        """Classify an entry
+
+        Aimed to be overloaded by child classes
+
+        Args:
+            page_addr: the address of the page
+            entry: the entry to classify
+
+        Returns:
+            the classified entry
+        """
         raise NotImplementedError
 
     def derive_page_address(self, addr, mode="global"):
-        # Derive the addresses of pages containing the address
+        """Derive the addresses of pages containing the address
+
+        Args:
+            addr: the address to derive
+            mode: the mode to use
+
+        Returns:
+            the addresses of pages containing the address
+        """
         addrs = []
         for lvl in range(self.radix_levels[mode] - 1, -1, -1):
             for entry_class in self.map_datapages_entries_to_levels[mode][lvl]:
@@ -632,8 +1012,22 @@ class MMURadix(MMU):
 
     def parse_parallel_frame(
         self, addresses, frame_size, pidx, mode="global", **kwargs
-    ):
-        # Every process sleep a random delay in order to desincronize access to disk and maximixe the throuput
+    ) -> tuple:
+        """Parse a frame in parallel
+
+        Every process sleep a random delay in order to desynchronise access to disk and maximixe the throuput
+
+        Args:
+            addresses: the addresses to parse
+            frame_size: the size of the frame
+            pidx: the process index
+            mode: the mode to use
+            **kwargs: additional arguments
+
+        Returns:
+            a tuple containing page tables, data pages and empty tables
+        """
+        # Every process sleep a random delay in order to desynchronise access to disk and maximixe the throuput
         sleep(uniform(pidx, pidx + 1) // 1000)
 
         data_pages = []
@@ -665,7 +1059,19 @@ class MMURadix(MMU):
 
     def parse_frame(
         self, frame_buf, frame_addr, frame_size, frame_level=-1, mode="global"
-    ):
+    ) -> tuple:
+        """Parse a frame
+
+        Args:
+            frame_buf: the buffer of the frame
+            frame_addr: the address of the frame
+            frame_size: the size of the frame
+            frame_level: the level of the frame
+            mode: the mode to use
+
+        Returns:
+            a tuple containing the number of invalids, the classes of the page tables and page table object
+        """
         frame_d = defaultdict(dict)
         if frame_level >= 0:
             reseved_classes = self.machine.mmu.map_reserved_entries_to_levels[mode][
@@ -745,7 +1151,18 @@ class MMURadix(MMU):
         empty_c,
         entries_per_frame,
         mode="global",
-    ):
+    ) -> list:
+        """Classify a frame
+
+        Args:
+            frame_d: the buffer of the frame
+            empty_c: the number of empty entries
+            entries_per_frame: the number of entries per frame
+            mode: the mode to use
+
+        Returns:
+            a list containing the classes of the page tables
+        """
         if empty_c == entries_per_frame:
             return [-1]  # EMPTY
 
@@ -770,15 +1187,31 @@ class MMURadix(MMU):
 
 
 class PhysicalMemory:
+    """Represents the physical memory of a machine
+
+    The physical memory is composed by a set of memory regions, each one representing a set of contiguous physical addresses with the same permissions.
+
+    Attributes:
+        _is_opened: a flag to check if the memory is opened
+        _miasm_vm: the Miasm VM
+        _memregions: the memory regions
+        _memsize: the size of the memory
+        physpace: the physical space
+        raw_configuration: the raw configuration of the memory
+    """
+
     machine = None
 
     def __deepcopy__(self, memo):
+        """Deepcopy the PhysicalMemory object"""
         return PhysicalMemory(self.raw_configuration)
 
     def __copy__(self):
+        """Copy the PhysicalMemory object"""
         return PhysicalMemory(self.raw_configuration)
 
     def __getstate__(self):
+        """Get the state of the PhysicalMemory object"""
         self.close()
         if self._miasm_vm:
             del self._miasm_vm
@@ -788,10 +1221,16 @@ class PhysicalMemory:
         return state
 
     def __setstate__(self, state):
+        """Set the state of the PhysicalMemory object"""
         self.__dict__.update(state)
         self.reopen()
 
     def __init__(self, regions_defs):
+        """Initialize the PhysicalMemory
+
+        Args:
+            regions_defs: the regions definitions
+        """
         self._is_opened = False
         self._miasm_vm = None
         self._memregions = []
@@ -855,14 +1294,17 @@ class PhysicalMemory:
         self.close()
 
     def __len__(self):
+        """Get the size of the memory"""
         return self._memsize
 
     def __contains__(self, key):
+        """Check if a key is in the memory"""
         if not isinstance(key, int):
             raise TypeError
         return key in self.physpace["ram"]
 
     def close(self):
+        """Close the memory"""
         for region in self._memregions:
             try:
                 if region["mmap"] is not None:
@@ -878,6 +1320,7 @@ class PhysicalMemory:
         self._is_opened = False
 
     def reopen(self):
+        """Reopen the memory"""
         for region in self._memregions:
             region["fd"] = open(region["filename"], "rb")
             region["mmap"] = mmap(region["fd"].fileno(), 0, MAP_SHARED, PROT_READ)
@@ -885,6 +1328,7 @@ class PhysicalMemory:
         self._is_opened = True
 
     def get_data(self, start, size):
+        """Get data from the memory"""
         for region in self._memregions:
             if region["start"] <= start <= region["end"]:
                 return region["mmap"][
@@ -893,7 +1337,20 @@ class PhysicalMemory:
         return bytearray()
 
     def get_addresses(self, size, align_offset=0, cpus=1, max_address=-1):
-        """Return a list contains tuples (for a total of cpus tuples). Each tuple contains the len of the iterator, and an iterator over part of all the addresses aligned to align_offset and distanced by size present in RAM"""
+        """Get the addresses of the memory
+
+        Return a list contains tuples (for a total of cpus tuples).
+        Each tuple contains the len of the iterator, and an iterator over part of all the addresses aligned to align_offset and distanced by size present in RAM regions.
+
+        Args:
+            size: the size of the addresses
+            align_offset: the alignment offset
+            cpus: the number of cpus
+            max_address: the maximum address
+
+        Returns:
+            a tuple containing the total elements and the addresses
+        """
         if size == 0:
             return 0, []
 
@@ -967,7 +1424,11 @@ class PhysicalMemory:
             return total_elems, multi_ranges
 
     def get_miasm_vmmngr(self):
-        """Load each RAM file in a MIASM virtual memory region"""
+        """Load each RAM file in a MIASM virtual memory region
+
+        Returns:
+            the Miasm VM
+        """
         if self._miasm_vm is not None:
             return self._miasm_vm
 
@@ -984,9 +1445,11 @@ class PhysicalMemory:
         return self._miasm_vm
 
     def get_memregions(self):
+        """Get the memory regions"""
         return self._memregions
 
     def free_miasm_memory(self):
+        """Free the Miasm memory"""
         if self._miasm_vm:
             self._miasm_vm = None
             gc.collect()
