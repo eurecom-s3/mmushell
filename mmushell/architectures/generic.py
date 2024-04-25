@@ -109,15 +109,48 @@ class TableEntry:
 
 
 class PageTable:
+    """Represents a Page Table
+
+    A page table is the data structure used by a virtual memory system in a computer operating system to store the mapping between virtual addresses and physical addresses.
+
+    Aimed to be inherited by child classes to represent different architectures
+
+    Attributes:
+        address: the address of the page table
+        size: the size of the page table
+        entries: the entries of the page table
+        levels: the levels of the page table
+    """
+
     entry_size = 0
 
     def __init__(self, address, size, entries, levels, *args):
+        """Initialize the Page Table
+
+        Args:
+            address: the address of the page table
+            size: the size of the page table
+            entries: the entries of the page table
+            levels: the levels of the page table
+            *args: additional arguments
+        """
         self.address = address
         self.size = size
         self.entries = entries
         self.levels = levels
 
-    def apply_on_entries(self, f, args):
+    def apply_on_entries(self, f: function, args):
+        """Run a function to all the entries of the page table.
+
+        The provided function should take an entry and the arguments as input and return the result of the operation.
+
+        Args:
+            f: the function to apply
+            args: the arguments to pass to the function
+
+        Returns:
+            a list with the results of the function applied to all the entries
+        """
         res = []
         for entry in self.entries:
             res.append(f(entry, args))
@@ -125,6 +158,19 @@ class PageTable:
 
 
 def perms_bool_to_string(kr, kw, kx, r, w, x):
+    """Convert a set of permissions from boolean to string
+
+    Args:
+        kr: read permission for the kernel
+        kw: write permission for the kernel
+        kx: execute permission for the kernel
+        r: read permission for the user
+        w: write permission for the user
+        x: execute permission for the user
+
+    Returns:
+        a string with the permissions
+    """
     perm_s = "R" if kr else "-"
     perm_s += "W" if kw else "-"
     perm_s += "X" if kx else "-"
