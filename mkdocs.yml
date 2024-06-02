@@ -1,0 +1,56 @@
+site_name: MMUShell
+site_url: https://memoscopy.github.io/mmushell
+site_description: Documentation for MMUShell
+
+repo_name: Memoscopy/mmushell
+repo_url: https://github.com/Memoscopy/mmushell
+
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.action.edit
+    - navigation.instant
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.path
+    - navigation.top
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - mkdocstrings
+  - search
+  - git-revision-date-localized:
+      enable_creation_date: true
+  - git-committers:
+      repository: Memoscopy/mmushell
+      branch: main
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+
+nav:
+  - index.md
+  - tutorials.md
+  - how-to-guides.md
+  - Reference:
+      - Index: reference/reference.md
+      - MMUShell: reference/mmushell.md
+      - Exporter: reference/exporter.md
+      - Architectures:
+          - Generic: reference/architectures/generic.md
+          - AArch64: reference/architectures/aarch64.md
+          - ARM: reference/architectures/arm.md
+          - RISC-V: reference/architectures/riscv.md
+          - Intel: reference/architectures/intel.md
+          - MIPS: reference/architectures/mips.md
+          - PowerPC: reference/architectures/ppc.md
+  - explanation.md

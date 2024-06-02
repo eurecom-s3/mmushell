@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 import os
 import errno
-from collections import defaultdict
-import argparse
 import pickle
-from qmp import QEMUMonitorProtocol
-from signal import signal, SIGINT
-from threading import Timer
+import argparse
+
+from collections import defaultdict
 from datetime import datetime
+from threading import Timer
+from signal import signal, SIGINT
 from copy import deepcopy
+from qmp import QEMUMonitorProtocol
 
 start_time_g = 0
+
 
 class CPU:
     def __init__(self, mem_base_addr, dump_file_name, debug):
@@ -37,9 +39,14 @@ class CPU:
         # Grab the memory size and dump the memory
         res = qmonitor.cmd("query-memory-size-summary")
         memory_size = res["return"]["base-memory"]
-        qmonitor.cmd("pmemsave", {"val": self.mem_base_addr,
-                                  "size": memory_size,
-                                  "filename": self.dump_file_name + ".dump"})
+        qmonitor.cmd(
+            "pmemsave",
+            {
+                "val": self.mem_base_addr,
+                "size": memory_size,
+                "filename": self.dump_file_name + ".dump",
+            },
+        )
 
 
 class Intel(CPU):
@@ -67,15 +74,23 @@ class Intel(CPU):
         memory_size = res["return"]["base-memory"]
 
         # Dump different chunks of memory
-        qmonitor.cmd("pmemsave", {"val": 0x0,
-                                  "size": min(memory_size, 0xC0000000),
-                                  "filename": self.dump_file_name + ".dump.0"
-                                  })
+        qmonitor.cmd(
+            "pmemsave",
+            {
+                "val": 0x0,
+                "size": min(memory_size, 0xC0000000),
+                "filename": self.dump_file_name + ".dump.0",
+            },
+        )
         if memory_size >= 0xC0000000:
-            qmonitor.cmd("pmemsave", {"val": 0x100000000,
-                                      "size": memory_size - 0xC0000000,
-                                      "filename": self.dump_file_name + ".dump.1"
-                                      })
+            qmonitor.cmd(
+                "pmemsave",
+                {
+                    "val": 0x100000000,
+                    "size": memory_size - 0xC0000000,
+                    "filename": self.dump_file_name + ".dump.1",
+                },
+            )
 
 
 class IntelQ35(Intel):
@@ -84,23 +99,45 @@ class IntelQ35(Intel):
         memory_size = res["return"]["base-memory"]
 
         # Dump different chunks of memory
-        qmonitor.cmd("pmemsave", {"val": 0x0,
-                                  "size": min(memory_size, 0x80000000),
-                                  "filename": self.dump_file_name + ".dump.0"
-                                  })
+        qmonitor.cmd(
+            "pmemsave",
+            {
+                "val": 0x0,
+                "size": min(memory_size, 0x80000000),
+                "filename": self.dump_file_name + ".dump.0",
+            },
+        )
         if memory_size >= 0x80000000:
-            qmonitor.cmd("pmemsave", {"val": 0x100000000,
-                                      "size": memory_size - 0x80000000,
-                                      "filename": self.dump_file_name + ".dump.1"
-                                      })
+            qmonitor.cmd(
+                "pmemsave",
+                {
+                    "val": 0x100000000,
+                    "size": memory_size - 0x80000000,
+                    "filename": self.dump_file_name + ".dump.1",
+                },
+            )
 
 
 class PPC(CPU):
     def __init__(self, mem_base_addr, dump_file_name, debug):
         super(PPC, self).__init__(mem_base_addr, dump_file_name, debug)
-        dict_proto = {"U": {"value": 0, "modified": False}, "L": {"value": 0, "modified": False}}
-        self._BATS = {x: deepcopy(dict_proto) for x in
-                      ["DBAT0", "DBAT1", "DBAT2", "DBAT3", "IBAT0", "IBAT1", "IBAT2", "IBAT3"]}
+        dict_proto = {
+            "U": {"value": 0, "modified": False},
+            "L": {"value": 0, "modified": False},
+        }
+        self._BATS = {
+            x: deepcopy(dict_proto)
+            for x in [
+                "DBAT0",
+                "DBAT1",
+                "DBAT2",
+                "DBAT3",
+                "IBAT0",
+                "IBAT1",
+                "IBAT2",
+                "IBAT3",
+            ]
+        }
 
     def parse_log_row(self, data_log, start_time):
         if self.debug:
@@ -115,20 +152,33 @@ class PPC(CPU):
             _, vsid = keys_values[1].split("=")
             if reg_value not in self.regs[reg_name]:
                 if vsid.strip() == "-1":
-                    self.regs[reg_name][reg_value] = {"first_seen": time_now, "last_seen": time_now, "vsids": {}}
+                    self.regs[reg_name][reg_value] = {
+                        "first_seen": time_now,
+                        "last_seen": time_now,
+                        "vsids": {},
+                    }
                 else:
                     vsid = int(vsid.strip(), 16)
-                    self.regs[reg_name][reg_value] = {"first_seen": time_now, "last_seen": time_now,
-                                                      "vsids": {vsid: (time_now, time_now)}}
+                    self.regs[reg_name][reg_value] = {
+                        "first_seen": time_now,
+                        "last_seen": time_now,
+                        "vsids": {vsid: (time_now, time_now)},
+                    }
             else:
                 self.regs[reg_name][reg_value]["last_seen"] = time_now
                 if vsid.strip() != "-1":
                     vsid = int(vsid.strip(), 16)
                     if vsid not in self.regs[reg_name][reg_value]["vsids"]:
-                        self.regs[reg_name][reg_value]["vsids"][vsid] = (time_now, time_now)
+                        self.regs[reg_name][reg_value]["vsids"][vsid] = (
+                            time_now,
+                            time_now,
+                        )
                     else:
                         first_seen = self.regs[reg_name][reg_value]["vsids"][vsid][0]
-                        self.regs[reg_name][reg_value]["vsids"][vsid] = (first_seen, time_now)
+                        self.regs[reg_name][reg_value]["vsids"][vsid] = (
+                            first_seen,
+                            time_now,
+                        )
             pass
         elif "BAT" in reg_name:
             reg_group = reg_name[0:5]
@@ -138,8 +188,14 @@ class PPC(CPU):
             self._BATS[reg_group][reg_part]["value"] = reg_value
             self._BATS[reg_group][reg_part]["modified"] = True
 
-            if self._BATS[reg_group]["U"]["modified"] and self._BATS[reg_group]["L"]["modified"]:
-                regs_values = (self._BATS[reg_group]["U"]["value"], self._BATS[reg_group]["L"]["value"])
+            if (
+                self._BATS[reg_group]["U"]["modified"]
+                and self._BATS[reg_group]["L"]["modified"]
+            ):
+                regs_values = (
+                    self._BATS[reg_group]["U"]["value"],
+                    self._BATS[reg_group]["L"]["value"],
+                )
                 if regs_values not in self.regs[reg_group]:
                     self.regs[reg_group][regs_values] = (time_now, time_now)
                 else:
@@ -164,17 +220,21 @@ class Arm(CPU):
 class ArmVirtSecure(CPU):
     def __init__(self, mem_base_addr, dump_file_name, debug):
         super(ArmVirtSecure, self).__init__(mem_base_addr, dump_file_name, debug)
-        self.secure_mem_base_addr = 0xe000000
+        self.secure_mem_base_addr = 0xE000000
         self.secure_memory_size = 0x01000000
 
     def dump_memory(self, qmonitor):
         super(ArmVirtSecure, self).dump_memory(qmonitor)
 
         # Dump also secure memory
-        qmonitor.cmd("pmemsave", {"val": self.secure_mem_base_addr,
-                                  "size": self.secure_memory_size,
-                                  "filename": self.dump_file_name + "_secure.dump"
-                                  })
+        qmonitor.cmd(
+            "pmemsave",
+            {
+                "val": self.secure_mem_base_addr,
+                "size": self.secure_memory_size,
+                "filename": self.dump_file_name + "_secure.dump",
+            },
+        )
 
 
 class ARM_integratorcp(Arm):
@@ -182,37 +242,47 @@ class ARM_integratorcp(Arm):
         res = qmonitor.cmd("query-memory-size-summary")
         memory_size = res["return"]["base-memory"]
 
-        memory_chunks = [(0x0000000000000000, 0x000000000fffffff),
-                         (0x0000000010800000, 0x0000000012ffffff),
-                         (0x0000000013001000, 0x0000000013ffffff),
-                         (0x0000000014800000, 0x0000000014ffffff),
-                         (0x0000000015001000, 0x0000000015ffffff),
-                         (0x0000000016001000, 0x0000000016ffffff),
-                         (0x0000000017001000, 0x0000000017ffffff),
-                         (0x0000000018001000, 0x0000000018ffffff),
-                         (0x0000000019001000, 0x0000000019ffffff),
-                         (0x000000001b000000, 0x000000001bffffff),
-                         (0x000000001c001000, 0x000000001cffffff),
-                         (0x000000001d001000, 0x00000000bfffffff),
-                         (0x00000000c0001000, 0x00000000c7ffffff),
-                         (0x00000000c8000010, 0x00000000c9ffffff),
-                         (0x00000000ca800000, 0x00000000caffffff)]
+        memory_chunks = [
+            (0x0000000000000000, 0x000000000FFFFFFF),
+            (0x0000000010800000, 0x0000000012FFFFFF),
+            (0x0000000013001000, 0x0000000013FFFFFF),
+            (0x0000000014800000, 0x0000000014FFFFFF),
+            (0x0000000015001000, 0x0000000015FFFFFF),
+            (0x0000000016001000, 0x0000000016FFFFFF),
+            (0x0000000017001000, 0x0000000017FFFFFF),
+            (0x0000000018001000, 0x0000000018FFFFFF),
+            (0x0000000019001000, 0x0000000019FFFFFF),
+            (0x000000001B000000, 0x000000001BFFFFFF),
+            (0x000000001C001000, 0x000000001CFFFFFF),
+            (0x000000001D001000, 0x00000000BFFFFFFF),
+            (0x00000000C0001000, 0x00000000C7FFFFFF),
+            (0x00000000C8000010, 0x00000000C9FFFFFF),
+            (0x00000000CA800000, 0x00000000CAFFFFFF),
+        ]
 
         dumped_size = 0
         i = 0
         for i, chunk in enumerate(memory_chunks):
             dumped_chunk_size = min(memory_size - dumped_size, chunk[1] - chunk[0] + 1)
-            qmonitor.cmd("pmemsave", {"val": chunk[0],
-                                      "size": dumped_chunk_size,
-                                      "filename": self.dump_file_name + ".dump." + str(i)
-                                      })
+            qmonitor.cmd(
+                "pmemsave",
+                {
+                    "val": chunk[0],
+                    "size": dumped_chunk_size,
+                    "filename": self.dump_file_name + ".dump." + str(i),
+                },
+            )
             dumped_size += dumped_chunk_size
 
         if dumped_size < memory_size:
-            qmonitor.cmd("pmemsave", {"val": 0xcb800000,
-                                      "size": memory_size - dumped_size,
-                                      "filename": self.dump_file_name + ".dump." + str(i+1)
-                                      })
+            qmonitor.cmd(
+                "pmemsave",
+                {
+                    "val": 0xCB800000,
+                    "size": memory_size - dumped_size,
+                    "filename": self.dump_file_name + ".dump." + str(i + 1),
+                },
+            )
 
 
 class ARM_raspi3(Arm):
@@ -220,46 +290,56 @@ class ARM_raspi3(Arm):
         res = qmonitor.cmd("query-memory-size-summary")
         memory_size = res["return"]["base-memory"]
 
-        memory_chunks = [(0x0, 0x3f002fff),
-                         (0x3f003020, 0x3f006fff),
-                         (0x3f008000, 0x3f00b1ff),
-                         (0x3f00b440, 0x3f00b7ff),
-                         (0x3f00bc00, 0x3f0fffff),
-                         (0x3f101000, 0x3f101fff),
-                         (0x3f103000, 0x3f103fff),
-                         (0x3f104010, 0x3f1fffff),
-                         (0x3f203100, 0x3f203fff),
-                         (0x3f204020, 0x3f204fff),
-                         (0x3f205020, 0x3f20efff),
-                         (0x3f20f080, 0x3f211fff),
-                         (0x3f212008, 0x3f213fff),
-                         (0x3f214100, 0x3f214fff),
-                         (0x3f215100, 0x3f2fffff),
-                         (0x3f300100, 0x3f5fffff),
-                         (0x3f600100, 0x3f803fff),
-                         (0x3f804020, 0x3f804fff),
-                         (0x3f805020, 0x3f8fffff),
-                         (0x3f908000, 0x3f90ffff),
-                         (0x3f918000, 0x3f97ffff),
-                         (0x3f981000, 0x3fdfffff),
-                         (0x3fe00100, 0x3fe04fff),
-                         (0x3fe05100, 0x3fffffff)]
+        memory_chunks = [
+            (0x0, 0x3F002FFF),
+            (0x3F003020, 0x3F006FFF),
+            (0x3F008000, 0x3F00B1FF),
+            (0x3F00B440, 0x3F00B7FF),
+            (0x3F00BC00, 0x3F0FFFFF),
+            (0x3F101000, 0x3F101FFF),
+            (0x3F103000, 0x3F103FFF),
+            (0x3F104010, 0x3F1FFFFF),
+            (0x3F203100, 0x3F203FFF),
+            (0x3F204020, 0x3F204FFF),
+            (0x3F205020, 0x3F20EFFF),
+            (0x3F20F080, 0x3F211FFF),
+            (0x3F212008, 0x3F213FFF),
+            (0x3F214100, 0x3F214FFF),
+            (0x3F215100, 0x3F2FFFFF),
+            (0x3F300100, 0x3F5FFFFF),
+            (0x3F600100, 0x3F803FFF),
+            (0x3F804020, 0x3F804FFF),
+            (0x3F805020, 0x3F8FFFFF),
+            (0x3F908000, 0x3F90FFFF),
+            (0x3F918000, 0x3F97FFFF),
+            (0x3F981000, 0x3FDFFFFF),
+            (0x3FE00100, 0x3FE04FFF),
+            (0x3FE05100, 0x3FFFFFFF),
+        ]
 
         dumped_size = 0
         i = 0
         for i, chunk in enumerate(memory_chunks):
             dumped_chunk_size = min(memory_size - dumped_size, chunk[1] - chunk[0] + 1)
-            qmonitor.cmd("pmemsave", {"val": chunk[0],
-                                      "size": dumped_chunk_size,
-                                      "filename": self.dump_file_name + ".dump." + str(i)
-                                      })
+            qmonitor.cmd(
+                "pmemsave",
+                {
+                    "val": chunk[0],
+                    "size": dumped_chunk_size,
+                    "filename": self.dump_file_name + ".dump." + str(i),
+                },
+            )
             dumped_size += dumped_chunk_size
 
         if dumped_size < memory_size:
-            qmonitor.cmd("pmemsave", {"val": 0xcb800000,
-                                      "size": memory_size - dumped_size,
-                                      "filename": self.dump_file_name + ".dump." + str(i+1)
-                                      })
+            qmonitor.cmd(
+                "pmemsave",
+                {
+                    "val": 0xCB800000,
+                    "size": memory_size - dumped_size,
+                    "filename": self.dump_file_name + ".dump." + str(i + 1),
+                },
+            )
 
 
 class RISCV(CPU):
@@ -276,15 +356,23 @@ class MIPS_malta(MIPS):
         memory_size = res["return"]["base-memory"]
 
         # Dump different chunks of memory
-        qmonitor.cmd("pmemsave", {"val": 0x0,
-                                  "size": min(memory_size, 0x10000000),
-                                  "filename": self.dump_file_name + ".dump.0"
-                                  })
+        qmonitor.cmd(
+            "pmemsave",
+            {
+                "val": 0x0,
+                "size": min(memory_size, 0x10000000),
+                "filename": self.dump_file_name + ".dump.0",
+            },
+        )
         if memory_size >= 0x10000000:
-            qmonitor.cmd("pmemsave", {"val": 0x20000000,
-                                      "size": memory_size - 0x10000000,
-                                      "filename": self.dump_file_name + ".dump.1"
-                                      })
+            qmonitor.cmd(
+                "pmemsave",
+                {
+                    "val": 0x20000000,
+                    "size": memory_size - 0x10000000,
+                    "filename": self.dump_file_name + ".dump.1",
+                },
+            )
 
 
 class MIPS_mipssim(MIPS):
@@ -293,15 +381,23 @@ class MIPS_mipssim(MIPS):
         memory_size = res["return"]["base-memory"]
 
         # Dump different chunks of memory
-        qmonitor.cmd("pmemsave", {"val": 0x0,
-                                  "size": min(memory_size, 0x1fc00000),
-                                  "filename": self.dump_file_name + ".dump.0"
-                                  })
-        if memory_size >= 0x1fc00000:
-            qmonitor.cmd("pmemsave", {"val": 0x20000000,
-                                      "size": min(memory_size - 0x1fc00000, 0xe0000000),
-                                      "filename": self.dump_file_name + ".dump.1"
-                                      })
+        qmonitor.cmd(
+            "pmemsave",
+            {
+                "val": 0x0,
+                "size": min(memory_size, 0x1FC00000),
+                "filename": self.dump_file_name + ".dump.0",
+            },
+        )
+        if memory_size >= 0x1FC00000:
+            qmonitor.cmd(
+                "pmemsave",
+                {
+                    "val": 0x20000000,
+                    "size": min(memory_size - 0x1FC00000, 0xE0000000),
+                    "filename": self.dump_file_name + ".dump.1",
+                },
+            )
 
 
 class POWER(CPU):
@@ -318,20 +414,33 @@ class POWER(CPU):
             _, vsid = keys_values[1].split("=")
             if reg_value not in self.regs[reg_name]:
                 if vsid.strip() == "-1":
-                    self.regs[reg_name][reg_value] = {"first_seen": time_now, "last_seen": time_now, "vsids": {}}
+                    self.regs[reg_name][reg_value] = {
+                        "first_seen": time_now,
+                        "last_seen": time_now,
+                        "vsids": {},
+                    }
                 else:
                     vsid = int(vsid.strip(), 16)
-                    self.regs[reg_name][reg_value] = {"first_seen": time_now, "last_seen": time_now,
-                                                      "vsids": {vsid: (time_now, time_now)}}
+                    self.regs[reg_name][reg_value] = {
+                        "first_seen": time_now,
+                        "last_seen": time_now,
+                        "vsids": {vsid: (time_now, time_now)},
+                    }
             else:
                 self.regs[reg_name][reg_value]["last_seen"] = time_now
                 if vsid.strip() != "-1":
                     vsid = int(vsid.strip(), 16)
                     if vsid not in self.regs[reg_name][reg_value]["vsids"]:
-                        self.regs[reg_name][reg_value]["vsids"][vsid] = (time_now, time_now)
+                        self.regs[reg_name][reg_value]["vsids"][vsid] = (
+                            time_now,
+                            time_now,
+                        )
                     else:
                         first_seen = self.regs[reg_name][reg_value]["vsids"][vsid][0]
-                        self.regs[reg_name][reg_value]["vsids"][vsid] = (first_seen, time_now)
+                        self.regs[reg_name][reg_value]["vsids"][vsid] = (
+                            first_seen,
+                            time_now,
+                        )
             pass
 
         else:
@@ -342,13 +451,19 @@ class POWER(CPU):
                 self.regs[reg_name][reg_value] = (first_seen, time_now)
 
 
-parser = argparse.ArgumentParser(description='You have to call QEMU with "-qmp tcp:HOST:PORT,server,'
-                                             'nowait -d fossil -D pipe_file" options and WITHOUT "-enable-kvm" option')
+parser = argparse.ArgumentParser(
+    description='You have to call QEMU with "-qmp tcp:HOST:PORT,server,'
+    'nowait -d fossil -D pipe_file" options and WITHOUT "-enable-kvm" option'
+)
 parser.add_argument("pipe_file", help="PIPE for QEMU log file", type=str)
 parser.add_argument("qmp", help="QEMU QMP channel (host:port)", type=str)
 parser.add_argument("prefix_filename", help="Prefix for dump and .regs file.", type=str)
-parser.add_argument("--debug", help="Print debug info", action="store_true", default=False)
-parser.add_argument("--timer", help="Shutdown machine after N seconds", type=int, default=0)
+parser.add_argument(
+    "--debug", help="Print debug info", action="store_true", default=False
+)
+parser.add_argument(
+    "--timer", help="Shutdown machine after N seconds", type=int, default=0
+)
 subparser = parser.add_subparsers(required=True, help="Architectures", dest="arch")
 parser_intel = subparser.add_parser("intel")
 parser_intelq35 = subparser.add_parser("intel_q35")
@@ -481,9 +596,13 @@ for data in fifo:
         if args.timer > 0:
             t = Timer(args.timer, timer_handler)
             t.start()
-            print("After {} seconds it dump the memory, save the registers, "
-                  "and shutdown the machine. So wait...".format(str(args.timer)))
+            print(
+                "After {} seconds it dump the memory, save the registers, "
+                "and shutdown the machine. So wait...".format(str(args.timer))
+            )
         else:
-            print("Press CTRL-C to dump the memory, save the registers, and shutdown the machine")
+            print(
+                "Press CTRL-C to dump the memory, save the registers, and shutdown the machine"
+            )
 
     log_class.parse_log_row(data, start_time_g)
