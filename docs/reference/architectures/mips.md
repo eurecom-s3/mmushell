@@ -1,0 +1,3 @@
+## MIPS
+
+::: mmushell.architectures.mips

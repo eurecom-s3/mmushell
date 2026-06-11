@@ -16,9 +16,9 @@ make CFLAGS="-Warray-bounds=0" -j 8
 cd ../../../
 
 # Create the virtualenv and install dependencies
-if [ ! -d "mmushell_venv" ] ; then
-	python3 -m venv mmushell_venv
+if [ ! -d "venv" ] ; then
+	python3 -m venv venv
 fi
 
-source ./mmushell_venv/bin/activate
+source ./venv/bin/activate
 pip3 install -r qemu/requirements.txt

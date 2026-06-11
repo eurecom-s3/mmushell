@@ -1,9 +1,10 @@
+# mmushell
 wheel
 qmp
 prettytable
 tqdm
 colorama
-git+git://github.com/cea-sec/miasm.git@218492cd10b339a8d47d2fdbd61953fcf954fb8b#egg=miasm
+miasm
 pyparsing
 future
 portion
@@ -15,3 +16,10 @@ cerberus
 sortedcontainers
 numpy
 pyelftools
+
+# documentation
+mkdocs
+mkdocs-material
+mkdocs-git-revision-date-localized-plugin
+mkdocs-git-committers-plugin-2
+mkdocstrings[python]
